@@ -1,4 +1,5 @@
 export { NapsClient } from "./client.js";
+export { resolveOptions } from "./models.js";
 export type {
   NapsClientOptions,
   TransportType,

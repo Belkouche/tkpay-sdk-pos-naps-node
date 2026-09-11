@@ -1,5 +1,5 @@
 import {
-  DEFAULTS,
+  resolveOptions,
   type NapsClientOptions,
   type PaymentResult,
   type ReferencingResult,
@@ -38,7 +38,7 @@ export class NapsClient {
 
   /** @param transport optional injected transport (used in tests). */
   constructor(options: NapsClientOptions = {}, transport?: Transport) {
-    this.opts = { ...DEFAULTS, ...options };
+    this.opts = resolveOptions(options);
     this.transport = transport ?? this.createTransport();
   }
 

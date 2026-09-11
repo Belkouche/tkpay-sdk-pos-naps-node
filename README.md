@@ -320,19 +320,25 @@ try {
 NAPS terminals come in two protocol generations. They differ in one wire detail that matters: how
 a response message ends.
 
-| `protocolVersion` | Response ends with | Confirmation carries §4.2 fields | Use for |
+| `protocolVersion` | Response ends with | Confirmation carries §4.2 fields | Terminals |
 |---|---|---|---|
-| `"v2"` (default) | `!` | yes (`MT`/`DE`/`NCAR`/`DAEX`) | NapsPay **v5.4.4+** terminals |
-| `"v1"` | `?` | no | older, pre-v5.4.4 terminals |
+| `"v2"` | `!` | yes (`MT`/`DE`/`NCAR`/`DAEX`) | Sunmi P2/P3 — NapsPay **v5.4.4+** |
+| `"v1"` | `?` | no | Ingenico Lane — legacy |
 
-**If your terminal runs NapsPay v5.4.4 or newer, do nothing** — `"v2"` is the default and correct.
-Only set `"v1"` if you have a legacy terminal:
+**The default is chosen for you based on the transport, so you normally set nothing:**
+
+- `transport: "tcp"` (Sunmi) → defaults to **`"v2"`**
+- `transport: "serial"` (Ingenico) → defaults to **`"v1"`**
+
+Only pass `protocolVersion` if your terminal is unusual (e.g. a Sunmi still on the old protocol, or
+an Ingenico that has been updated). An explicit value always wins:
 
 ```ts
-const naps = new NapsClient({
-  transport: "serial",
-  protocolVersion: "v1", // legacy terminal that ends responses with '?'
-});
+// Ingenico on USB — already defaults to v1, nothing to set:
+const lane = new NapsClient({ transport: "serial" });
+
+// Force a version only if you need to override the transport default:
+const naps = new NapsClient({ transport: "tcp", protocolVersion: "v1" });
 ```
 
 Getting this wrong isn't catastrophic — the SDK has a 1-second fallback if it doesn't see the
@@ -354,7 +360,7 @@ new NapsClient({
   // Serial transport
   serialPath: "/dev/tty.usbmodem1401", // omit to auto-discover (VID 0x0B00)
   serialBaudRate: 115_200,
-  protocolVersion: "v2",     // "v1" | "v2" — see §9
+  protocolVersion: "v2",     // "v1" | "v2" — defaults per transport (serial→v1, tcp→v2); see §9
 
   // Identity (goes into the NCAI field)
   registerId: "01",          // 2 digits
