@@ -1,0 +1,37 @@
+{
+  "name": "@aslan/naps",
+  "version": "1.0.0",
+  "description": "Node.js SDK for NAPS Pay M2M terminals (Sunmi P2/P3 over TCP, Ingenico Lane over USB serial). ASCII TLV protocol, spec v2.0 conformant.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run test/tlv.test.ts test/receipt.test.ts test/client.test.ts",
+    "test:integration": "vitest run test/client.integration.test.ts"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "keywords": ["naps", "napspay", "payment", "terminal", "tlv", "sunmi", "ingenico", "morocco"],
+  "license": "MIT"
+}
