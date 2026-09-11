@@ -1,6 +1,6 @@
 {
   "name": "@aslan/naps",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Node.js SDK for NAPS Pay M2M terminals (Sunmi P2/P3 over TCP, Ingenico Lane over USB serial). ASCII TLV protocol, spec v2.0 conformant.",
   "type": "module",
   "main": "./dist/index.cjs",
