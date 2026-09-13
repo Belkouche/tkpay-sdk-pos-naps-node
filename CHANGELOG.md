@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0 — rebrand to @tkpay/naps
+
+- **Renamed** from `@aslan/naps` to **`@tkpay/naps`** and moved to
+  `tkpay-sdk-pos-naps-node`, joining the canonical NAPS SDK family (the C# SDK
+  `tkpay-sdk-pos-naps-csharp` is the reference implementation). The previous package
+  (`@aslan/naps` / `aslan-naps-node`) is retired.
+- No API changes — same `NapsClient`, transports, and behavior. To migrate, change the
+  install/import from `@aslan/naps` to `@tkpay/naps`.
+
 ## v1.0.1
 
 - **fix:** the Ingenico (serial) transport now defaults to protocol **v1** (`?`

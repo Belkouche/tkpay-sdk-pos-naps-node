@@ -1,4 +1,4 @@
-# @aslan/naps
+# @tkpay/naps
 
 **Node.js SDK for taking card payments on NAPS Pay terminals in Morocco.**
 
@@ -11,12 +11,17 @@ receipt. That's the whole idea. This README teaches you everything else from scr
 - Written in **TypeScript**, ships **ESM + CommonJS** and full type definitions.
 - Conformant with the NapsPay ECR↔Terminal **TLV Protocol Specification v2.0** (NapsPay v5.4.4).
 
-> **This is the Node.js port** of the canonical C# SDK,
-> [`tkpay-sdk-pos-naps-csharp`](https://github.com/Belkouche/tkpay-sdk-pos-naps-csharp)
-> (`TKPay.Naps`). It tracks the same NAPS TLV protocol and stays at feature parity for the
-> Node/TypeScript ecosystem — same transports (TCP + USB serial), Ingenico port discovery,
-> two-phase payment, and per-transport v1/v2 protocol default. If you're on .NET, use the C#
-> SDK; on Node, use this.
+> Part of the NAPS SDK family — all speak the same M2M TLV protocol to the same terminals.
+> The **[C# SDK](https://github.com/Belkouche/tkpay-sdk-pos-naps-csharp) is canonical**
+> (reference implementation); this is the **Node.js port** (`@tkpay/naps`), at feature parity
+> for the Node/TypeScript ecosystem — same transports (TCP + USB serial), Ingenico port
+> discovery, two-phase payment, per-transport v1/v2 protocol default. Siblings:
+> [Android](https://github.com/Belkouche/tkpay-sdk-pos-android) ·
+> [iOS](https://github.com/Belkouche/tkpay-sdk-pos-ios) ·
+> [React Native](https://github.com/Belkouche/tkpay-sdk-pos-rn).
+> Test without hardware using the [emulator](https://github.com/Belkouche/tkpay-naps-emulator).
+>
+> _Formerly published as `@aslan/naps` ([aslan-naps-node](https://github.com/Belkouche/aslan-naps-node), now retired) — renamed to `@tkpay/naps` to join the canonical family._
 
 ---
 
@@ -45,7 +50,7 @@ physical card reader. This SDK is the bridge between them:
 ```
 ┌──────────────┐   TLV messages    ┌────────────────┐   card network   ┌──────────┐
 │  Your POS    │ ───────────────▶  │  NAPS terminal │ ───────────────▶ │   Bank   │
-│ (@aslan/naps)│ ◀───────────────  │  (Sunmi/Lane)  │ ◀─────────────── │  / NAPS  │
+│ (@tkpay/naps)│ ◀───────────────  │  (Sunmi/Lane)  │ ◀─────────────── │  / NAPS  │
 └──────────────┘   result + receipt └────────────────┘                  └──────────┘
 ```
 
@@ -61,7 +66,7 @@ a result. The SDK turns those commands and results into clean JavaScript objects
 ## 2. Install
 
 ```bash
-npm install @aslan/naps
+npm install @tkpay/naps
 ```
 
 If you use an **Ingenico Lane over USB**, also install the (optional, native) serial driver:
@@ -77,7 +82,7 @@ You do **not** need `serialport` for Sunmi/TCP terminals — the package works w
 ## 3. Your first payment (copy-paste)
 
 ```ts
-import { NapsClient } from "@aslan/naps";
+import { NapsClient } from "@tkpay/naps";
 
 // A Sunmi terminal on your local network at 192.168.1.50.
 const naps = new NapsClient({
@@ -158,7 +163,7 @@ r.receiptLines;      // parsed, printable lines (see below)
 `receiptLines` is already parsed into lines with formatting hints, so you can drive a printer:
 
 ```ts
-import { receiptToText } from "@aslan/naps";
+import { receiptToText } from "@tkpay/naps";
 
 if (r.receiptLines) {
   for (const line of r.receiptLines) {
@@ -293,7 +298,7 @@ You don't have to memorize codes — `responseMessage` already carries the meani
 any code up:
 
 ```ts
-import { describeResponse } from "@aslan/naps";
+import { describeResponse } from "@tkpay/naps";
 describeResponse("116"); // "Insufficient funds"
 describeResponse("909"); // "System failure"
 ```
