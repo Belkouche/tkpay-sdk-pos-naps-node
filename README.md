@@ -65,8 +65,30 @@ a result. The SDK turns those commands and results into clean JavaScript objects
 
 ## 2. Install
 
+> **Not published to the public npm registry.** Install directly from GitHub.
+
 ```bash
-npm install @tkpay/naps
+# from GitHub (latest on the default branch)
+npm install github:Belkouche/tkpay-sdk-pos-naps-node
+
+# pin to a released version tag (recommended)
+npm install github:Belkouche/tkpay-sdk-pos-naps-node#v1.1.0
+```
+
+Or add it to `package.json` and run `npm install`:
+
+```json
+{
+  "dependencies": {
+    "@tkpay/naps": "github:Belkouche/tkpay-sdk-pos-naps-node#v1.1.0"
+  }
+}
+```
+
+Then import it by its package name as usual:
+
+```ts
+import { NapsClient } from "@tkpay/naps";
 ```
 
 If you use an **Ingenico Lane over USB**, also install the (optional, native) serial driver:
