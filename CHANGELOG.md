@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.1 — installable from GitHub
+
+- Added a `prepare` script (`tsup`) so `dist/` builds automatically on a git install
+  (`dist/` is gitignored). `npm install github:Belkouche/tkpay-sdk-pos-naps-node#v1.1.1`
+  now works out of the box — the v1.1.0 tag lacked this and shipped no build.
+- README documents install-from-GitHub (not published to the public npm registry).
+- No code/API changes.
+
 ## v1.1.0 — rebrand to @tkpay/naps
 
 - **Renamed** from `@aslan/naps` to **`@tkpay/naps`** and moved to

@@ -1,11 +1,16 @@
 {
   "name": "@tkpay/naps",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Node.js SDK for NAPS Pay M2M terminals (Sunmi P2/P3 over TCP, Ingenico Lane over USB serial). ASCII TLV protocol, spec v2.0 conformant. Node port of the canonical C# SDK (tkpay-sdk-pos-naps-csharp).",
   "type": "module",
-  "repository": { "type": "git", "url": "git+https://github.com/Belkouche/tkpay-sdk-pos-naps-node.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Belkouche/tkpay-sdk-pos-naps-node.git"
+  },
   "homepage": "https://github.com/Belkouche/tkpay-sdk-pos-naps-node#readme",
-  "bugs": { "url": "https://github.com/Belkouche/tkpay-sdk-pos-naps-node/issues" },
+  "bugs": {
+    "url": "https://github.com/Belkouche/tkpay-sdk-pos-naps-node/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,8 +21,12 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
-  "engines": { "node": ">=18" },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsup",
     "prepare": "tsup",
@@ -36,6 +45,15 @@
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
-  "keywords": ["naps", "napspay", "payment", "terminal", "tlv", "sunmi", "ingenico", "morocco"],
+  "keywords": [
+    "naps",
+    "napspay",
+    "payment",
+    "terminal",
+    "tlv",
+    "sunmi",
+    "ingenico",
+    "morocco"
+  ],
   "license": "MIT"
 }
