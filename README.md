@@ -11,6 +11,13 @@ receipt. That's the whole idea. This README teaches you everything else from scr
 - Written in **TypeScript**, ships **ESM + CommonJS** and full type definitions.
 - Conformant with the NapsPay ECR↔Terminal **TLV Protocol Specification v2.0** (NapsPay v5.4.4).
 
+> **This is the Node.js port** of the canonical C# SDK,
+> [`tkpay-sdk-pos-naps-csharp`](https://github.com/Belkouche/tkpay-sdk-pos-naps-csharp)
+> (`TKPay.Naps`). It tracks the same NAPS TLV protocol and stays at feature parity for the
+> Node/TypeScript ecosystem — same transports (TCP + USB serial), Ingenico port discovery,
+> two-phase payment, and per-transport v1/v2 protocol default. If you're on .NET, use the C#
+> SDK; on Node, use this.
+
 ---
 
 ## Table of contents
