@@ -100,6 +100,11 @@ export interface PaymentResult {
   ncai?: string;
   /** NS (004) — sequence number of the transaction. */
   sequence?: string;
+  /**
+   * Void outcome unknown (no TM 104 reply, or TM 104 CR=995): the reversal may or may not
+   * have executed. Never a success — verify with `duplicateReceipt(stan)`.
+   */
+  isPending?: boolean;
 }
 
 export interface TestResult {

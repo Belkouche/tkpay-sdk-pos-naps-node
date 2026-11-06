@@ -272,24 +272,49 @@ export interface BuildCancellationOptions {
  * `originalSequence` is sent as NSA (005), the sequence number of the payment to void.
  */
 export function buildCancellation(stan: string, opts: BuildCancellationOptions = {}): string {
-  return buildCancellationFrame(TM.CANCELLATION, stan, opts);
-}
-
-/**
- * Cancellation Confirmation (TM 004) — phase 2 of a void, sent on the same connection
- * after an approved TM 103. Carries the same fields as the TM 003 request.
- */
-export function buildCancellationConfirmation(stan: string, opts: BuildCancellationOptions = {}): string {
-  return buildCancellationFrame(TM.CANCELLATION_CONFIRMATION, stan, opts);
-}
-
-function buildCancellationFrame(tm: string, stan: string, opts: BuildCancellationOptions): string {
   const extra: Array<[string, string]> = [[TAG.STAN, stan]];
   if (opts.amountCentimes !== undefined && opts.amountCentimes > 0) {
     extra.push([TAG.MT, String(opts.amountCentimes)]);
   }
   if (opts.originalSequence) extra.push([TAG.NSA, opts.originalSequence]);
-  return buildMessage(tm, { ncai: opts.ncai, ns: opts.ns, extraFields: extra });
+  return buildMessage(TM.CANCELLATION, { ncai: opts.ncai, ns: opts.ns, extraFields: extra });
+}
+
+export interface BuildCancellationConfirmationOptions {
+  ncai?: string;
+  /** NS (004) — must equal the NS of the TM 003 being confirmed (v2 §3.4). */
+  ns?: string;
+  /** MT (002) echoed verbatim from TM 103 — the live v5.4.4 terminal refuses TM 004 without it. */
+  amount?: string;
+  currency?: string;
+  /** DATR/HETR (018/019) — original transaction date/time, echoed from TM 103. */
+  datr?: string;
+  hetr?: string;
+}
+
+/**
+ * Cancellation Confirmation (TM 004, v2 §4.4) — executes the actual reversal; sent on the
+ * same connection after TM 103 CR=000. Fields: TM, NCAI, NS (same as TM 003), STAN,
+ * [MT, DE], [DATR], [HETR], DA, HE. No NSA: the sequence goes in NS.
+ */
+export function buildCancellationConfirmation(stan: string, opts: BuildCancellationConfirmationOptions = {}): string {
+  const { ncai = "0100001", ns = "000001", amount, currency = "504", datr, hetr } = opts;
+  const t = now();
+  const fields: string[] = [
+    tlv(TAG.TM, TM.CANCELLATION_CONFIRMATION),
+    tlv(TAG.NCAI, ncai),
+    tlv(TAG.NS, ns),
+    tlv(TAG.STAN, stan),
+  ];
+  if (amount) {
+    fields.push(tlv(TAG.MT, amount));
+    fields.push(tlv(TAG.DE, currency));
+  }
+  if (datr) fields.push(tlv(TAG.DATR, datr));
+  if (hetr) fields.push(tlv(TAG.HETR, hetr));
+  fields.push(tlv(TAG.DA, t.date));
+  fields.push(tlv(TAG.HE, t.time));
+  return fields.join("");
 }
 
 /**

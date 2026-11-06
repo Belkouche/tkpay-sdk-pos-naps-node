@@ -8,15 +8,27 @@ TLV spec v2.0). Additive; no breaking changes.
 - **feat:** `settlement()` — TM 010 telecollecte (TM + NCAI + DA + HE, no NS) →
   `SettlementResult` `{ isSuccess, responseCode, message, date, time }`; CR 052 maps to
   "Already settled today", 909 to "Terminal or server is down".
-- **feat:** two-phase void. `cancel(stan, amountMad?, originalSequence?)` sends TM 003 →
-  TM 103, then **TM 004 (Cancellation Confirmation)** → TM 104 on the same connection.
-  The merchant receipt comes from TM 103 (`receiptText` / `receiptLines`); the customer
-  receipt (`customerReceiptText` / `customerReceiptLines`) and the void STAN come from
-  TM 104. A missing TM 104 reply is tolerated (the void is committed at TM 103); a TM 104
-  with CR ≠ 000 fails the void; a terminal answering TM 003 directly with TM 104 is still
-  accepted. The original sequence is sent as NSA (005). New `buildCancellationConfirmation`,
-  `TM.CANCELLATION_CONFIRMATION` ("004") and `TM.CANCELLATION_CONFIRMATION_RESPONSE`
-  ("104"); `TM.CANCELLATION_CORRECTION` is kept as a deprecated alias.
+- **feat:** two-phase void per TLV spec v2.0 §4.3–4.4 (cross-checked with the live v5.4.4
+  terminal test in `tkpay-sdk-pos-naps-rn` 5fcfeb0). `cancel(stan, amountMad?,
+  originalSequence?)` sends TM 003 → TM 103, then **TM 004 (Cancellation Confirmation)** →
+  TM 104 on the same connection. TM 103 CR=000 only means "transaction found"; TM 004
+  executes the reversal.
+  - TM 104 **CR 000 or 480** = void completed: `isSuccess`, void STAN and customer receipt
+    (`customerReceiptText` / `customerReceiptLines`) from TM 104; merchant receipt from TM 103.
+  - **Fails closed:** no TM 104 reply (timeout), or TM 104 **CR 995** (seen with completed
+    voids on live terminals), returns `isSuccess: false` with **`isPending: true`**, keeping
+    the STAN and the TM 103 merchant receipt — verify with `duplicateReceipt(stan)`.
+  - Any other TM 104 code fails the void. A TM 103 with CR ≠ 000 (including 480) fails
+    without sending TM 004; a terminal answering TM 003 directly with TM 104 000/480 is
+    still accepted.
+  - TM 004 frame: TM, NCAI, **NS = the TM 003 NS** (no NSA), STAN, MT echoed verbatim from
+    TM 103 (the live terminal refuses TM 004 without it) + DE, DATR/HETR echoed from
+    TM 103, DA, HE. The original sequence is sent as NSA (005) on TM 003 only.
+  - New `buildCancellationConfirmation`, `TM.CANCELLATION_CONFIRMATION` ("004"),
+    `TM.CANCELLATION_CONFIRMATION_RESPONSE` ("104") and `PaymentResult.isPending`;
+    `TM.CANCELLATION_CORRECTION` is kept as a deprecated alias.
+- **feat:** `duplicateReceipt(stan?)` sends the STAN (008) to reprint a specific payment
+  of the current business day (spec §4.6); omitted = last transaction.
 - **fix:** a refused payment confirmation (TM 102 with CR ≠ 000, e.g. 302 sale not found,
   482 already cancelled — the terminal auto-reverses) is now `isSuccess: false` with that
   `responseCode`, instead of an approval with a "Confirmation failed" message.

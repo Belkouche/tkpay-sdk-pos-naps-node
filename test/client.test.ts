@@ -160,25 +160,57 @@ describe("NapsClient.cancel", () => {
 
     const [p1, p2] = t.sent.map(parseMessage);
     expect(p2[TAG.TM]).toBe("004");
-    // TM 004 carries the same fields as TM 003.
-    for (const tag of [TAG.NCAI, TAG.NS, TAG.STAN, TAG.MT, TAG.NSA]) expect(p2[tag]).toBe(p1[tag]);
+    expect(p2[TAG.NCAI]).toBe(p1[TAG.NCAI]);
+    expect(p2[TAG.STAN]).toBe("703062");
   });
 
-  it("tolerates a missing TM 104 reply (void committed at TM 103)", async () => {
+  it("TM 004 carries the TM 003 sequence in NS (not NSA) and echoes MT/DE/DATR/HETR from TM 103", async () => {
     const t = new FakeTransport([
-      common("103", "000", tlv(TAG.STAN, "703062")),
+      common("103", "000", tlv(TAG.STAN, "703062") + tlv(TAG.DATR, "10092026") + tlv(TAG.HETR, "101500")),
+      common("104", "000"),
+    ]);
+    // TM 003 asks for 12.50 but TM 103 reports MT=1250 — the echoed value is what's sent.
+    await client(t).cancel("703062", 99, "000003");
+    const [p1, p2] = t.sent.map(parseMessage);
+    expect(p2[TAG.NS]).toBe(p1[TAG.NS]);
+    expect(p2[TAG.NSA]).toBeUndefined();
+    expect(p2[TAG.MT]).toBe("1250");
+    expect(p2[TAG.DE]).toBe("504");
+    expect(p2[TAG.DATR]).toBe("10092026");
+    expect(p2[TAG.HETR]).toBe("101500");
+  });
+
+  it("fails closed when TM 104 never arrives: pending, keeping STAN and the TM 103 merchant receipt", async () => {
+    const merchantDp = "03000201031001S032001C033008MERCHANT";
+    const t = new FakeTransport([
+      common("103", "000", tlv(TAG.STAN, "703062") + tlv(TAG.DP, merchantDp)),
       async () => {
         throw new TerminalTimeoutError(1000);
       },
     ]);
     const res = await client(t).cancel("703062", 12.5);
-    expect(res).toMatchObject({ isSuccess: true, isCancelled: true, stan: "703062" });
+    expect(res).toMatchObject({ isSuccess: false, isCancelled: false, isPending: true, stan: "703062", responseCode: "TIMEOUT" });
+    expect(res.receiptLines?.[0].text).toBe("MERCHANT");
+  });
+
+  it("treats TM 104 CR=995 as pending, not success and not a hard failure", async () => {
+    const t = new FakeTransport([common("103", "000", tlv(TAG.STAN, "703062")), common("104", "995")]);
+    const res = await client(t).cancel("703062", 12.5);
+    expect(res).toMatchObject({ isSuccess: false, isCancelled: false, isPending: true, stan: "703062", responseCode: "995" });
+  });
+
+  it("accepts TM 104 CR=480 as a completed void", async () => {
+    const t = new FakeTransport([common("103", "000", tlv(TAG.STAN, "703062")), common("104", "480")]);
+    const res = await client(t).cancel("703062", 12.5);
+    expect(res).toMatchObject({ isSuccess: true, isCancelled: true, responseCode: "480" });
+    expect(res.isPending).toBeUndefined();
   });
 
   it("fails when TM 104 refuses the cancellation confirmation", async () => {
     const t = new FakeTransport([common("103", "000", tlv(TAG.STAN, "703062")), common("104", "482")]);
     const res = await client(t).cancel("703062", 12.5);
     expect(res).toMatchObject({ isSuccess: false, isCancelled: false, responseCode: "482" });
+    expect(res.isPending).toBeUndefined();
   });
 
   it("does not send TM 004 when the terminal answers TM 003 directly with TM 104", async () => {
@@ -200,11 +232,11 @@ describe("NapsClient.cancel", () => {
     expect(parseMessage(t.sent[0])[TAG.NSA]).toBe("000003");
   });
 
-  it("accepts CR=480 (reversal accepted) as success", async () => {
+  it("treats TM 103 CR=480 as a failure without TM 004 (480 completes only on TM 104)", async () => {
     const t = new FakeTransport([common("103", "480", tlv(TAG.STAN, "703062"))]);
     const res = await client(t).cancel("703062", 12.5);
-    expect(res.isSuccess).toBe(true);
-    expect(res.isCancelled).toBe(true);
+    expect(res.isSuccess).toBe(false);
+    expect(t.sent).toHaveLength(1);
   });
 });
 
@@ -239,6 +271,15 @@ describe("NapsClient management operations", () => {
     const sent = t.sent.map(parseMessage);
     expect(sent.map((f) => f[TAG.NCAI])).toEqual(["0200005", "0200005", "0200005"]);
     expect(sent.map((f) => f[TAG.NS])).toEqual(["000001", "000002", "000003"]);
+  });
+
+  it("duplicateReceipt targets a STAN when given (v2 §4.6)", async () => {
+    const t = new FakeTransport([common("108", "000"), common("108", "000")]);
+    const c = client(t);
+    await c.duplicateReceipt("703062");
+    await c.duplicateReceipt();
+    expect(parseMessage(t.sent[0])[TAG.STAN]).toBe("703062");
+    expect(parseMessage(t.sent[1])[TAG.STAN]).toBeUndefined();
   });
 
   it("duplicateReceipt reports success on CR=000", async () => {

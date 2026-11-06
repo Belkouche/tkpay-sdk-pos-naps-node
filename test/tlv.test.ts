@@ -4,6 +4,7 @@ import {
   buildMessage,
   buildConfirmation,
   buildCancellation,
+  buildCancellationConfirmation,
   buildSettlement,
   parseMessage,
   maskPansInText,
@@ -155,6 +156,25 @@ describe("buildCancellation", () => {
 
   it("omits NSA when no original sequence is given", () => {
     expect(parseMessage(buildCancellation("703062"))["005"]).toBeUndefined();
+  });
+});
+
+describe("buildCancellationConfirmation", () => {
+  it("follows v2 §4.4: TM 004, NS (no NSA), STAN, MT+DE, DATR/HETR, DA/HE", () => {
+    const msg = buildCancellationConfirmation("703062", {
+      ncai: "0100001", ns: "000007", amount: "000000001250", datr: "10092026", hetr: "101500",
+    });
+    const f = parseMessage(msg);
+    expect(Object.keys(f)).toEqual(["001", "003", "004", "008", "002", "012", "018", "019", "014", "015"]);
+    expect(f["001"]).toBe("004");
+    expect(f["004"]).toBe("000007");
+    expect(f["002"]).toBe("000000001250"); // echoed verbatim
+    expect(f["005"]).toBeUndefined();
+  });
+
+  it("omits MT/DE and DATR/HETR when not provided", () => {
+    const f = parseMessage(buildCancellationConfirmation("703062"));
+    expect(Object.keys(f)).toEqual(["001", "003", "004", "008", "014", "015"]);
   });
 });
 

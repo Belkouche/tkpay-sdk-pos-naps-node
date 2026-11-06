@@ -262,6 +262,11 @@ const pay = await naps.pay(125.0, "order-4711");
 // voided.receiptLines = merchant copy, voided.customerReceiptLines = customer copy,
 // voided.stan = the void's own STAN.
 const voided = await naps.cancel(pay.stan!, 125.0, pay.sequence);
+if (voided.isPending) {
+  // No TM 104 reply (or CR 995): the reversal may or may not have run. Never assume it did —
+  // check the original payment by STAN.
+  const check = await naps.duplicateReceipt(pay.stan!);
+}
 
 // Health check — is the terminal ↔ bank link alive? Call before a busy period.
 const test = await naps.networkTest();      // { isSuccess, responseCode, message }
@@ -276,7 +281,7 @@ const totals = await naps.totals();         // { isSuccess, receiptText }
 // CR "052" = already settled today.
 const settled = await naps.settlement();    // { isSuccess, responseCode, message, date, time }
 
-// Reprint the last transaction's receipt.
+// Reprint the last transaction's receipt, or a given STAN from today.
 const dup = await naps.duplicateReceipt();  // PaymentResult (with receiptLines)
 
 // Reset the PIN pad.

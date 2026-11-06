@@ -140,40 +140,58 @@ export class NapsClient {
 
   /**
    * Cancel/void a payment by STAN. NapsPay v5.4.4 requires the original amount (MAD).
-   * Two-phase on the same connection: TM 003 → 103 (merchant receipt), then TM 004 → 104
-   * (void STAN, customer receipt). A missing TM 104 reply is tolerated — the void is
-   * committed at TM 103.
-   * @param originalSequence NS of the payment to void, sent as NSA (005).
+   * Two-phase on the same connection (v2 §4.3–4.4): TM 003 → 103 CR=000 only means the
+   * transaction was found; TM 004 → 104 executes the reversal (CR 000/480 = completed).
+   * No TM 104 reply, or CR=995, yields `isPending: true` (not a success) with the STAN
+   * and the TM 103 merchant receipt — verify with `duplicateReceipt(stan)`.
+   * @param originalSequence NS of the payment to void, sent as NSA (005) on TM 003.
    */
   async cancel(stan: string, amountMad?: number, originalSequence?: string): Promise<PaymentResult> {
     const ns = this.nextSequence();
     const amountCentimes = amountMad !== undefined ? Math.round(amountMad * 100) : undefined;
-    const frameOpts = { ncai: this.ncai, ns, amountCentimes, originalSequence };
+    const msg = buildCancellation(stan, { ncai: this.ncai, ns, amountCentimes, originalSequence });
     try {
-      const resp = await this.transport.sendReceive(buildCancellation(stan, frameOpts), this.opts.testTimeoutMs);
+      const resp = await this.transport.sendReceive(msg, this.opts.testTimeoutMs);
       const fields = parseMessage(extractLastMessage(resp));
       const tm = fields[TAG.TM];
       const cr = fields[TAG.CR];
-      // v5.4.4: TM 103 (or a direct TM 104) with CR=000 (found) or CR=480 (reversal
-      // accepted) is a successful void.
-      const approved = (tm === "103" || tm === "104") && (cr === "000" || cr === "480");
-      // Cancellation success is decided by TM+CR above, not by the payment-approval
-      // code set, so override isSuccess directly (480 is a valid void, not an approval).
       const result = mapResult(fields, false);
-      if (!approved || tm !== "103" || cr !== "000") {
-        return { ...result, isSuccess: approved, isCancelled: approved || result.isCancelled };
+      if (tm !== "103" || cr !== "000") {
+        // A terminal answering TM 003 directly with a completed TM 104 is still a void.
+        // Success is decided by TM+CR, not the payment-approval set (480 is a valid void).
+        const done = tm === "104" && (cr === "000" || cr === "480");
+        return { ...result, isSuccess: done, isCancelled: done || result.isCancelled };
       }
 
-      // Phase 2: Cancellation Confirmation (TM 004 → 104).
+      // Phase 2: Cancellation Confirmation (TM 004 → 104) executes the reversal.
+      const confMsg = buildCancellationConfirmation(fields[TAG.STAN] ?? stan, {
+        ncai: this.ncai,
+        ns, // same NS as the TM 003 it confirms
+        amount: fields[TAG.MT] ?? (amountCentimes ? String(amountCentimes) : undefined),
+        currency: fields[TAG.DE],
+        datr: fields[TAG.DATR],
+        hetr: fields[TAG.HETR],
+      });
       let confFields: Record<string, string> | undefined;
       try {
-        const confMsg = buildCancellationConfirmation(stan, frameOpts);
         confFields = parseMessage(await this.transport.sendReceive(confMsg, this.opts.confirmationTimeoutMs));
       } catch (e) {
         if (!(e instanceof TerminalTimeoutError)) throw e;
       }
       const confCr = confFields?.[TAG.CR];
-      if (confCr !== undefined && confCr !== "000") {
+      // Fail closed: no reply, no CR, or 995 (seen alongside completed voids on live
+      // terminals) means the outcome is unknown — pending, never success.
+      if (confCr === undefined || confCr === "995") {
+        return {
+          ...result,
+          isSuccess: false,
+          isCancelled: false,
+          isPending: true,
+          responseCode: confCr ?? "TIMEOUT",
+          responseMessage: `Cancellation unconfirmed (${confCr ?? "no TM 104 reply"}): verify with duplicateReceipt(stan)`,
+        };
+      }
+      if (confCr !== "000" && confCr !== "480") {
         return {
           ...result,
           isSuccess: false,
@@ -187,6 +205,7 @@ export class NapsClient {
         ...result,
         isSuccess: true,
         isCancelled: true,
+        responseCode: confCr,
         stan: confFields?.[TAG.STAN] ?? result.stan,
         customerReceiptText: maskDp(confDp),
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
@@ -221,8 +240,11 @@ export class NapsClient {
     return { isSuccess: cr === "000", responseCode: cr, receiptText: maskDp(fields[TAG.DP]) };
   }
 
-  async duplicateReceipt(): Promise<PaymentResult> {
-    const resp = await this.transport.sendReceive(buildMessage(TM.DUPLICATE, this.managementFields()), 15_000);
+  /** @param stan STAN of a payment from the current business day; omit for the last one (v2 §4.6). */
+  async duplicateReceipt(stan?: string): Promise<PaymentResult> {
+    const extraFields: Array<[string, string]> = stan ? [[TAG.STAN, stan]] : [];
+    const msg = buildMessage(TM.DUPLICATE, { ...this.managementFields(), extraFields });
+    const resp = await this.transport.sendReceive(msg, 15_000);
     return mapResult(parseMessage(resp), true);
   }
 

@@ -106,7 +106,9 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
 
     const t0 = Date.now();
     const cancel = await newClient().cancel(pay.stan!, 20, pay.sequence);
-    expect(Date.now() - t0).toBeLessThan(2000); // a stalled TM 004 would take 40 s
+    // TM 103/104 may carry no terminator (live v5.4.4), costing ~1 s of silence framing
+    // per phase; a stalled TM 004 would take the full 40 s confirmation timeout.
+    expect(Date.now() - t0).toBeLessThan(5000);
     expect(cancel).toMatchObject({ isSuccess: true, isCancelled: true, responseCode: "000" });
     expect(cancel.receiptLines?.length).toBeGreaterThan(0); // merchant copy, TM 103
     expect(cancel.customerReceiptLines?.length).toBeGreaterThan(0); // customer copy, TM 104
