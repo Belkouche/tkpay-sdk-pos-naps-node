@@ -23,6 +23,7 @@ export {
   buildMessage,
   buildConfirmation,
   buildCancellation,
+  buildCancellationConfirmation,
   buildSettlement,
   parseMessage,
   isApproved,

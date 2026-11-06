@@ -2,14 +2,24 @@
 
 ## v1.2.0 — NapsPay v5.4.4 sync with the canonical C# SDK
 
-Brings the Node port in line with `tkpay-sdk-pos-naps-csharp` v1.4.0 (NapsPay v5.4.4,
+Brings the Node port in line with `tkpay-sdk-pos-naps-csharp` v1.5.0 (NapsPay v5.4.4,
 TLV spec v2.0). Additive; no breaking changes.
 
 - **feat:** `settlement()` — TM 010 telecollecte (TM + NCAI + DA + HE, no NS) →
   `SettlementResult` `{ isSuccess, responseCode, message, date, time }`; CR 052 maps to
   "Already settled today", 909 to "Terminal or server is down".
-- **feat:** `cancel(stan, amountMad?, originalSequence?)` — the original sequence is sent
-  as NSA (005), as in the C# cancellation frame. TM 103 and TM 104 both count as success.
+- **feat:** two-phase void. `cancel(stan, amountMad?, originalSequence?)` sends TM 003 →
+  TM 103, then **TM 004 (Cancellation Confirmation)** → TM 104 on the same connection.
+  The merchant receipt comes from TM 103 (`receiptText` / `receiptLines`); the customer
+  receipt (`customerReceiptText` / `customerReceiptLines`) and the void STAN come from
+  TM 104. A missing TM 104 reply is tolerated (the void is committed at TM 103); a TM 104
+  with CR ≠ 000 fails the void; a terminal answering TM 003 directly with TM 104 is still
+  accepted. The original sequence is sent as NSA (005). New `buildCancellationConfirmation`,
+  `TM.CANCELLATION_CONFIRMATION` ("004") and `TM.CANCELLATION_CONFIRMATION_RESPONSE`
+  ("104"); `TM.CANCELLATION_CORRECTION` is kept as a deprecated alias.
+- **fix:** a refused payment confirmation (TM 102 with CR ≠ 000, e.g. 302 sale not found,
+  482 already cancelled — the terminal auto-reverses) is now `isSuccess: false` with that
+  `responseCode`, instead of an approval with a "Confirmation failed" message.
 - **feat:** `pay()` now returns the Phase-2 (TM 102) DP as the customer receipt
   (`customerReceiptText` / `customerReceiptLines`), plus `entryMode` (EM 040), `ncai`
   and `sequence` from the response.
@@ -26,7 +36,9 @@ TLV spec v2.0). Additive; no breaking changes.
   doesn't echo it.
 - **fix:** TCP/serial reads end immediately on a chunk ending in either terminator
   (`!` or `?`), instead of waiting for the 1s silence fallback on a v1/v2 mismatch.
-- **test:** integration suite port is overridable via `NAPS_EMULATOR_PORT`.
+- **test:** integration suite emulator path and port are overridable via `NAPS_EMULATOR`
+  and `NAPS_EMULATOR_PORT`; new suites cover the two-phase void and the emulator's
+  `decline`, `error` and `confirm_error` modes.
 
 ## v1.1.1 — installable from GitHub
 

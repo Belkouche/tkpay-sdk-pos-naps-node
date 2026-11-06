@@ -9,7 +9,7 @@ import { NapsClient } from "../src/index.js";
  * The emulator is spawned per-suite; if it is not present on disk, the suite is skipped.
  */
 
-const EMULATOR = "/Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py";
+const EMULATOR = process.env.NAPS_EMULATOR ?? "/Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py";
 const PORT = Number(process.env.NAPS_EMULATOR_PORT ?? 4471);
 const HOST = "127.0.0.1";
 
@@ -39,17 +39,25 @@ function newClient(): NapsClient {
 const hasEmulator = existsSync(EMULATOR);
 const suite = hasEmulator ? describe : describe.skip;
 
-suite("NapsClient ⇄ emulator (TCP, v2)", () => {
+/** Run the emulator with `args` for the enclosing suite; suites share PORT, one at a time. */
+function useEmulator(args: string[] = []): void {
   let emu: ChildProcess;
 
   beforeAll(async () => {
-    emu = spawn("python3", [EMULATOR, "--port", String(PORT)], { stdio: "ignore" });
+    emu = spawn("python3", [EMULATOR, "--port", String(PORT), ...args], { stdio: "ignore" });
     await waitForPort(PORT, HOST);
   });
 
-  afterAll(() => {
-    emu?.kill();
+  afterAll(async () => {
+    if (!emu || emu.exitCode !== null) return;
+    const exited = new Promise((resolve) => emu.once("exit", resolve));
+    emu.kill();
+    await exited;
   });
+}
+
+suite("NapsClient ⇄ emulator (TCP, v2)", () => {
+  useEmulator();
 
   it("network test succeeds", async () => {
     const res = await newClient().networkTest();
@@ -92,6 +100,19 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     expect(cancel.isSuccess).toBe(true);
   });
 
+  it("completes the two-phase void (TM 003 → 103, TM 004 → 104) without waiting on a timeout", async () => {
+    const pay = await newClient().pay(20);
+    expect(pay.isSuccess).toBe(true);
+
+    const t0 = Date.now();
+    const cancel = await newClient().cancel(pay.stan!, 20, pay.sequence);
+    expect(Date.now() - t0).toBeLessThan(2000); // a stalled TM 004 would take 40 s
+    expect(cancel).toMatchObject({ isSuccess: true, isCancelled: true, responseCode: "000" });
+    expect(cancel.receiptLines?.length).toBeGreaterThan(0); // merchant copy, TM 103
+    expect(cancel.customerReceiptLines?.length).toBeGreaterThan(0); // customer copy, TM 104
+    expect(cancel.stan).toMatch(/^\d{6}$/); // void STAN from TM 104
+  });
+
   it("referencing echoes the recharge parameter set", async () => {
     const res = await newClient().referencing("02");
     expect(res.isSuccess).toBe(true);
@@ -104,3 +125,33 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     expect(Date.now() - t0).toBeLessThan(800); // would be >1000ms if it hit the drain fallback
   });
 });
+
+suite("NapsClient ⇄ emulator --mode decline", () => {
+  useEmulator(["--mode", "decline"]);
+
+  it("returns the Phase-1 decline without confirming", async () => {
+    const res = await newClient().pay(12.5);
+    expect(res).toMatchObject({ isSuccess: false, responseCode: "100" });
+  });
+});
+
+suite("NapsClient ⇄ emulator --mode error --code 116", () => {
+  useEmulator(["--mode", "error", "--code", "116"]);
+
+  it("maps the supplied decline code", async () => {
+    const res = await newClient().pay(12.5);
+    expect(res).toMatchObject({ isSuccess: false, responseCode: "116" });
+  });
+});
+
+for (const code of ["302", "482"]) {
+  suite(`NapsClient ⇄ emulator --mode confirm_error --code ${code}`, () => {
+    useEmulator(["--mode", "confirm_error", "--code", code]);
+
+    it("reports the refused TM 102 confirmation as a failure", async () => {
+      const res = await newClient().pay(12.5);
+      expect(res.isSuccess).toBe(false);
+      expect(res.responseCode).toBe(code);
+    });
+  });
+}

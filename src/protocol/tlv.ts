@@ -51,6 +51,7 @@ export const TM = {
   PAYMENT: "001",
   CONFIRMATION: "002",
   CANCELLATION: "003",
+  CANCELLATION_CONFIRMATION: "004", // phase 2 of a void, same connection as TM 003
   DUPLICATE: "008",
   NETWORK_TEST: "009",
   TOTALS: "010",
@@ -61,7 +62,9 @@ export const TM = {
   PAYMENT_RESPONSE: "101",
   CONFIRMATION_RESPONSE: "102",
   CANCELLATION_RESPONSE: "103",
-  CANCELLATION_CORRECTION: "104", // NapsPay v5.4.4+: also a successful void
+  CANCELLATION_CONFIRMATION_RESPONSE: "104",
+  /** @deprecated 104 is the reply to TM 004; use CANCELLATION_CONFIRMATION_RESPONSE. */
+  CANCELLATION_CORRECTION: "104",
   DUPLICATE_RESPONSE: "108",
   NETWORK_TEST_RESPONSE: "109",
   TOTALS_RESPONSE: "110",
@@ -257,20 +260,36 @@ export function buildConfirmation(stan: string, opts: BuildConfirmationOptions =
   return fields.join("");
 }
 
+export interface BuildCancellationOptions {
+  ncai?: string;
+  ns?: string;
+  amountCentimes?: number;
+  originalSequence?: string;
+}
+
 /**
  * Cancellation (TM 003). NapsPay v5.4.4+ requires the original amount (MT 002);
  * `originalSequence` is sent as NSA (005), the sequence number of the payment to void.
  */
-export function buildCancellation(
-  stan: string,
-  opts: { ncai?: string; ns?: string; amountCentimes?: number; originalSequence?: string } = {},
-): string {
+export function buildCancellation(stan: string, opts: BuildCancellationOptions = {}): string {
+  return buildCancellationFrame(TM.CANCELLATION, stan, opts);
+}
+
+/**
+ * Cancellation Confirmation (TM 004) — phase 2 of a void, sent on the same connection
+ * after an approved TM 103. Carries the same fields as the TM 003 request.
+ */
+export function buildCancellationConfirmation(stan: string, opts: BuildCancellationOptions = {}): string {
+  return buildCancellationFrame(TM.CANCELLATION_CONFIRMATION, stan, opts);
+}
+
+function buildCancellationFrame(tm: string, stan: string, opts: BuildCancellationOptions): string {
   const extra: Array<[string, string]> = [[TAG.STAN, stan]];
   if (opts.amountCentimes !== undefined && opts.amountCentimes > 0) {
     extra.push([TAG.MT, String(opts.amountCentimes)]);
   }
   if (opts.originalSequence) extra.push([TAG.NSA, opts.originalSequence]);
-  return buildMessage(TM.CANCELLATION, { ncai: opts.ncai, ns: opts.ns, extraFields: extra });
+  return buildMessage(tm, { ncai: opts.ncai, ns: opts.ns, extraFields: extra });
 }
 
 /**

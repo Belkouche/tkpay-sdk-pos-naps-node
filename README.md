@@ -258,6 +258,9 @@ const pay = await naps.pay(125.0, "order-4711");
 // Cancel / void a previous payment by its STAN.
 // On NapsPay v5.4.4 you MUST pass the original amount too.
 // Optionally pass the payment's sequence number; it's sent as NSA (005).
+// Two-phase like a payment: TM 003 → 103, then TM 004 → 104 on the same connection.
+// voided.receiptLines = merchant copy, voided.customerReceiptLines = customer copy,
+// voided.stan = the void's own STAN.
 const voided = await naps.cancel(pay.stan!, 125.0, pay.sequence);
 
 // Health check — is the terminal ↔ bank link alive? Call before a busy period.

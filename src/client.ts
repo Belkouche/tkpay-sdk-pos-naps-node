@@ -14,6 +14,7 @@ import {
   TM,
   TIDE,
   buildCancellation,
+  buildCancellationConfirmation,
   buildConfirmation,
   buildMessage,
   buildSettlement,
@@ -118,7 +119,16 @@ export class NapsClient {
         customerReceiptText: maskDp(confDp),
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
-      if (confCr !== "000") return { ...result, responseMessage: `Confirmation failed: CR=${confCr}` };
+      // The terminal can refuse the confirmation (302 = sale not found, 482 = already
+      // cancelled — it auto-reverses). That is not an approval.
+      if (confCr !== undefined && confCr !== "000") {
+        return {
+          ...result,
+          isSuccess: false,
+          responseCode: confCr,
+          responseMessage: `Confirmation refused: ${describeResponse(confCr)}`,
+        };
+      }
       return result;
     } catch (e) {
       if (e instanceof TerminalTimeoutError) {
@@ -130,24 +140,57 @@ export class NapsClient {
 
   /**
    * Cancel/void a payment by STAN. NapsPay v5.4.4 requires the original amount (MAD).
+   * Two-phase on the same connection: TM 003 → 103 (merchant receipt), then TM 004 → 104
+   * (void STAN, customer receipt). A missing TM 104 reply is tolerated — the void is
+   * committed at TM 103.
    * @param originalSequence NS of the payment to void, sent as NSA (005).
    */
   async cancel(stan: string, amountMad?: number, originalSequence?: string): Promise<PaymentResult> {
     const ns = this.nextSequence();
     const amountCentimes = amountMad !== undefined ? Math.round(amountMad * 100) : undefined;
-    const msg = buildCancellation(stan, { ncai: this.ncai, ns, amountCentimes, originalSequence });
+    const frameOpts = { ncai: this.ncai, ns, amountCentimes, originalSequence };
     try {
-      const resp = await this.transport.sendReceive(msg, this.opts.testTimeoutMs);
+      const resp = await this.transport.sendReceive(buildCancellation(stan, frameOpts), this.opts.testTimeoutMs);
       const fields = parseMessage(extractLastMessage(resp));
       const tm = fields[TAG.TM];
       const cr = fields[TAG.CR];
-      // v5.4.4: TM 103 (cancellation) or 104 (correction) with CR=000 (found) or
-      // CR=480 (reversal accepted) is a successful void.
+      // v5.4.4: TM 103 (or a direct TM 104) with CR=000 (found) or CR=480 (reversal
+      // accepted) is a successful void.
       const approved = (tm === "103" || tm === "104") && (cr === "000" || cr === "480");
       // Cancellation success is decided by TM+CR above, not by the payment-approval
       // code set, so override isSuccess directly (480 is a valid void, not an approval).
       const result = mapResult(fields, false);
-      return { ...result, isSuccess: approved, isCancelled: approved || result.isCancelled };
+      if (!approved || tm !== "103" || cr !== "000") {
+        return { ...result, isSuccess: approved, isCancelled: approved || result.isCancelled };
+      }
+
+      // Phase 2: Cancellation Confirmation (TM 004 → 104).
+      let confFields: Record<string, string> | undefined;
+      try {
+        const confMsg = buildCancellationConfirmation(stan, frameOpts);
+        confFields = parseMessage(await this.transport.sendReceive(confMsg, this.opts.confirmationTimeoutMs));
+      } catch (e) {
+        if (!(e instanceof TerminalTimeoutError)) throw e;
+      }
+      const confCr = confFields?.[TAG.CR];
+      if (confCr !== undefined && confCr !== "000") {
+        return {
+          ...result,
+          isSuccess: false,
+          isCancelled: false,
+          responseCode: confCr,
+          responseMessage: `Cancellation confirmation refused: ${describeResponse(confCr)}`,
+        };
+      }
+      const confDp = confFields?.[TAG.DP];
+      return {
+        ...result,
+        isSuccess: true,
+        isCancelled: true,
+        stan: confFields?.[TAG.STAN] ?? result.stan,
+        customerReceiptText: maskDp(confDp),
+        customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
+      };
     } catch (e) {
       if (e instanceof TerminalTimeoutError) {
         return { isSuccess: false, isCancelled: false, responseCode: "TIMEOUT", responseMessage: "Cancel request timed out" };
