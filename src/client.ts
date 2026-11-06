@@ -115,7 +115,7 @@ export class NapsClient {
       const confDp = confFields[TAG.DP];
       const result: PaymentResult = {
         ...mapResult(payFields, true),
-        customerReceiptText: confDp !== undefined ? maskPansInText(confDp) : undefined,
+        customerReceiptText: maskDp(confDp),
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
       if (confCr !== "000") return { ...result, responseMessage: `Confirmation failed: CR=${confCr}` };
@@ -168,14 +168,14 @@ export class NapsClient {
     const resp = await this.transport.sendReceive(msg, this.opts.referencingTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
-    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE] ?? tide, receiptText: fields[TAG.DP] };
+    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE] ?? tide, receiptText: maskDp(fields[TAG.DP]) };
   }
 
   async totals(): Promise<TotalsResult> {
     const resp = await this.transport.sendReceive(buildMessage(TM.TOTALS, this.managementFields()), this.opts.testTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
-    return { isSuccess: cr === "000", responseCode: cr, receiptText: fields[TAG.DP] };
+    return { isSuccess: cr === "000", responseCode: cr, receiptText: maskDp(fields[TAG.DP]) };
   }
 
   async duplicateReceipt(): Promise<PaymentResult> {
@@ -214,13 +214,17 @@ export class NapsClient {
   }
 }
 
+function maskDp(dp: string | undefined): string | undefined {
+  return dp !== undefined ? maskPansInText(dp) : undefined;
+}
+
 function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): PaymentResult {
   const cr = fields[TAG.CR];
   const card = fields[TAG.NCAR];
   const rawDp = fields[TAG.DP];
   // Display copies of the print block are PAN-masked; lines are parsed from the raw
   // block because masking inserts '*', the DP line-group separator.
-  const dp = rawDp !== undefined ? maskPansInText(rawDp) : undefined;
+  const dp = maskDp(rawDp);
   return {
     isSuccess: isApprovedFlag && isApproved(cr),
     isCancelled: cr === "280" || cr === "480",

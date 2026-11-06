@@ -192,6 +192,16 @@ describe("NapsClient management operations", () => {
   });
 });
 
+describe("NapsClient totals / referencing receipt masking", () => {
+  it("masks PANs in the totals and referencing receipt text", async () => {
+    const dp = "03000201031001S032001G033022CARTE 5167941234563315";
+    const t = new FakeTransport([common("110", "000", tlv(TAG.DP, dp)), common("113", "000", tlv(TAG.DP, dp))]);
+    const c = client(t);
+    expect((await c.totals()).receiptText).toContain("516794******3315");
+    expect((await c.referencing()).receiptText).not.toContain("5167941234563315");
+  });
+});
+
 describe("NapsClient.settlement", () => {
   it("sends TM 010 without a sequence and maps CR=000 with date/time", async () => {
     const t = new FakeTransport([common("110", "000")]);

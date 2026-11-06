@@ -17,7 +17,7 @@ TLV spec v2.0). Additive; no breaking changes.
   sub-tags (030–033), response message types (101…113) in `TM`, and `buildSettlement`.
 - **fix (PCI):** NCAR (007) is masked in `parseMessage`, so the full PAN never leaves the
   parser; 16-digit PANs are masked in receipt lines and in `receiptText` /
-  `responseMessage` (`maskPansInText`).
+  `responseMessage`, including the totals and referencing receipts (`maskPansInText`).
 - **fix:** management operations (network test, referencing, totals, duplicate, reset)
   now send the client's NCAI and a fresh sequence instead of the hard-coded
   `0100001` / `000001`.
