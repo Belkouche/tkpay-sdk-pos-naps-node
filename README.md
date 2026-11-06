@@ -1,484 +1,497 @@
 # @tkpay/naps
 
-**Node.js SDK for taking card payments on NAPS Pay terminals in Morocco.**
+Node.js SDK for card payments on NAPS Pay terminals in Morocco. Your application (the cash
+register, "ECR") sends a command such as "pay 125.00 MAD"; the terminal handles the card and the
+bank, and the SDK gives you back a typed result: approved or not, the transaction id (STAN), the
+masked card number and a printable receipt. It implements the NapsPay ECR ↔ Terminal TLV Protocol
+Specification v2.0 (NapsPay v5.4.4).
 
-You call `naps.pay(125)`, the customer taps their card on the terminal, and you get back a
-clear result — approved or declined, with the STAN, masked card number, and a printable
-receipt. That's the whole idea. This README teaches you everything else from scratch.
+**Terminals and connections supported by this SDK**
 
-- Works with **Sunmi P2/P3** terminals (over your local network — TCP) and **Ingenico Lane**
-  terminals (over a USB cable — serial).
-- Written in **TypeScript**, ships **ESM + CommonJS** and full type definitions.
-- Conformant with the NapsPay ECR↔Terminal **TLV Protocol Specification v2.0** (NapsPay v5.4.4).
+| Terminal (spec §2) | Connection | In this SDK |
+|---|---|---|
+| Sunmi P2, P3, P2 Smart PAD | Wi-Fi, TCP port 4444 | `transport: "tcp"` |
+| Sunmi P2, P3, P2 Smart PAD | USB | Not supported — use Wi-Fi |
+| Ingenico Lane 3600 | USB only | `transport: "serial"`, port auto-discovered |
+| Ingenico Self 5000 | USB only | Same USB serial path as the Lane; not tested separately |
 
-> Part of the NAPS SDK family — all speak the same M2M TLV protocol to the same terminals.
-> The **[C# SDK](https://github.com/Belkouche/tkpay-sdk-pos-naps-csharp) is canonical**
-> (reference implementation); this is the **Node.js port** (`@tkpay/naps`), at feature parity
-> for the Node/TypeScript ecosystem — same transports (TCP + USB serial), Ingenico port
-> discovery, two-phase payment, per-transport v1/v2 protocol default. Siblings:
-> [Android](https://github.com/Belkouche/tkpay-sdk-pos-android) ·
-> [iOS](https://github.com/Belkouche/tkpay-sdk-pos-ios) ·
-> [React Native](https://github.com/Belkouche/tkpay-sdk-pos-rn).
-> Test without hardware using the [emulator](https://github.com/Belkouche/tkpay-naps-emulator).
->
-> _Formerly published as `@aslan/naps` ([aslan-naps-node](https://github.com/Belkouche/aslan-naps-node), now retired) — renamed to `@tkpay/naps` to join the canonical family._
+Written in TypeScript; ships ESM + CommonJS with type definitions. Node.js 18 or later. It is the
+Node port of the canonical [C# SDK](https://github.com/Belkouche/tkpay-sdk-pos-naps-csharp).
 
 ---
 
-## Table of contents
+## Contents
 
-1. [The 30-second mental model](#1-the-30-second-mental-model)
-2. [Install](#2-install)
-3. [Your first payment (copy-paste)](#3-your-first-payment-copy-paste)
-4. [How a payment actually works](#4-how-a-payment-actually-works-the-two-phase-flow)
-5. [Reading the result](#5-reading-the-result)
-6. [Connecting to your terminal](#6-connecting-to-your-terminal)
-7. [Every operation, explained](#7-every-operation-explained)
-8. [Handling declines and errors](#8-handling-declines-and-errors)
-9. [v1 vs v2: the protocol switch](#9-v1-vs-v2-the-protocol-switch)
-10. [Full options reference](#10-full-options-reference)
-11. [Testing without a real terminal](#11-testing-without-a-real-terminal)
-12. [Glossary](#12-glossary)
-
----
-
-## 1. The 30-second mental model
-
-Your code is the **ECR** (Electronic Cash Register — i.e. your POS app). The **terminal** is the
-physical card reader. This SDK is the bridge between them:
-
-```
-┌──────────────┐   TLV messages    ┌────────────────┐   card network   ┌──────────┐
-│  Your POS    │ ───────────────▶  │  NAPS terminal │ ───────────────▶ │   Bank   │
-│ (@tkpay/naps)│ ◀───────────────  │  (Sunmi/Lane)  │ ◀─────────────── │  / NAPS  │
-└──────────────┘   result + receipt └────────────────┘                  └──────────┘
-```
-
-You never talk to the bank or handle card data yourself — the terminal does that. You send it
-short text commands ("take 125 MAD"), it drives the whole card interaction, and it hands you back
-a result. The SDK turns those commands and results into clean JavaScript objects.
-
-> **Amounts are in MAD** (Moroccan dirham). You pass `pay(125)` for 125.00 MAD — the SDK converts
-> to the centimes the terminal expects. Under the hood, `125` becomes `12500` centimes.
+1. [Install](#1-install)
+2. [Quickstart](#2-quickstart)
+3. [How a payment works](#3-how-a-payment-works)
+4. [How a void works](#4-how-a-void-works)
+5. [Other operations](#5-other-operations)
+6. [Receipts, PAN masking, response codes](#6-receipts-pan-masking-response-codes)
+7. [Errors and timeouts](#7-errors-and-timeouts)
+8. [Connecting and options](#8-connecting-and-options)
+9. [Testing with the emulator](#9-testing-with-the-emulator)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Changelog](#11-changelog)
 
 ---
 
-## 2. Install
+## 1. Install
 
-> **Not published to the public npm registry.** Install directly from GitHub.
+The package is not on the public npm registry. Install it from GitHub:
 
 ```bash
-# from GitHub (latest on the default branch)
 npm install github:Belkouche/tkpay-sdk-pos-naps-node
-
-# pin to a released version tag (recommended)
-npm install github:Belkouche/tkpay-sdk-pos-naps-node#v1.1.0
+# or pin a tag / commit:
+npm install github:Belkouche/tkpay-sdk-pos-naps-node#<tag-or-commit>
 ```
 
-Or add it to `package.json` and run `npm install`:
-
-```json
-{
-  "dependencies": {
-    "@tkpay/naps": "github:Belkouche/tkpay-sdk-pos-naps-node#v1.1.0"
-  }
-}
-```
-
-Then import it by its package name as usual:
+`dist/` is built automatically on install (`prepare` script). Then:
 
 ```ts
 import { NapsClient } from "@tkpay/naps";
 ```
 
-If you use an **Ingenico Lane over USB**, also install the (optional, native) serial driver:
+For an Ingenico terminal over USB, also install the optional native serial driver. TCP (Sunmi)
+does not need it:
 
 ```bash
 npm install serialport
 ```
 
-You do **not** need `serialport` for Sunmi/TCP terminals — the package works without it.
+---
+
+## 2. Quickstart
+
+Start the emulator (see [§9](#9-testing-with-the-emulator)), then run this. It is the same code as
+[`examples/quickstart.mjs`](examples/quickstart.mjs).
+
+```ts
+import { NapsClient, receiptToText } from "@tkpay/naps";
+
+// The emulator (or a Sunmi terminal on Wi-Fi) listens on TCP port 4444.
+const naps = new NapsClient({
+  transport: "tcp",
+  tcpHost: process.env.NAPS_HOST ?? "127.0.0.1",
+  tcpPort: Number(process.env.NAPS_PORT ?? 4444),
+});
+
+const result = await naps.pay(12.5); // 12.50 MAD
+if (result.isSuccess) {
+  console.log(`Approved — STAN ${result.stan}, card ${result.cardNumber}`);
+  console.log(receiptToText(result.receiptLines ?? []));
+} else {
+  console.log(`Declined — ${result.responseCode}: ${result.responseMessage}`);
+}
+naps.disconnect();
+```
+
+From a clone of this repo: `npm install && npm run build && node examples/quickstart.mjs`.
+Against the emulator it prints:
+
+```
+Approved — STAN 791883, card 516794******3315
+                 TKpay
+--------------------------------
+06/11/2026 23:39:13
+...
+MONTANT: 12.50 MAD
+--------------------------------
+DEBIT
+Copie Commercant
+```
+
+Amounts are in MAD: `pay(12.5)` sends 1250 centimes. The register and cashier ids default to
+`"01"` and `"00001"` (see [§8](#8-connecting-and-options)).
 
 ---
 
-## 3. Your first payment (copy-paste)
+## 3. How a payment works
+
+`pay()` runs two request/response exchanges on the **same connection**:
+
+```
+  your app (ECR)                         terminal
+       │  TM 001  payment request (MT, NCAI, NS) ─▶│  customer presents card,
+       │                                           │  terminal contacts the bank
+       │◀─ TM 101  payment response (CR, STAN, card, merchant receipt)
+       │
+       │  only if CR is an approval code:
+       │  TM 002  confirmation (STAN, MT, NCAR, DAEX) ─▶│  within 40 s, same connection
+       │◀─ TM 102  confirmation response (CR, customer receipt)
+```
+
+What `pay()` returns in each case:
+
+| Situation | `isSuccess` | `responseCode` | Notes |
+|---|---|---|---|
+| TM 101 declined | `false` | the decline code, e.g. `116` | no TM 002 is sent |
+| TM 101 approved, TM 102 CR 000 | `true` | `000` | merchant + customer receipts |
+| TM 102 refused (e.g. 302, 482) | `false` | the TM 102 code | not an approval; with 482 the terminal has reversed the sale |
+| No TM 101 reply in `paymentTimeoutMs` | `false` | `"TIMEOUT"` | |
+| No TM 102 reply in `confirmationTimeoutMs` | `true` | approval code | `responseMessage` is `"Confirmation timed out"` — reconcile |
+
+The result fields:
 
 ```ts
 import { NapsClient } from "@tkpay/naps";
 
-// A Sunmi terminal on your local network at 192.168.1.50.
-const naps = new NapsClient({
-  transport: "tcp",
-  tcpHost: "192.168.1.50",
-});
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const r = await naps.pay(125);
 
-const result = await naps.pay(125.0); // charge 125.00 MAD
-
-if (result.isSuccess) {
-  console.log(`✅ Approved. STAN ${result.stan}, card ${result.cardNumber}`);
-} else {
-  console.log(`❌ ${result.responseCode} — ${result.responseMessage}`);
-}
-```
-
-That's a complete, working payment. Run it while a customer has their card ready. Everything
-below explains what just happened and how to go further.
-
----
-
-## 4. How a payment actually works (the two-phase flow)
-
-A single `pay()` call runs **two round-trips** to the terminal. This is by design and matters for
-correctness — it's how NAPS avoids charging a customer without your POS recording the sale.
-
-```
-  your code                         terminal
-     │                                 │
-     │  ── pay(125) ───────────────▶   │   Phase 1: Authorization (TM 001)
-     │                                 │   → terminal prompts card, talks to the bank
-     │  ◀── approved, STAN=703062 ──   │   ← money is authorized, but not yet committed
-     │                                 │
-     │  ── confirm(STAN 703062) ───▶   │   Phase 2: Confirmation (TM 002)
-     │                                 │   → records the sale in the NAPS back office
-     │  ◀── confirmed + receipt ────   │   ← done
-     │                                 │
-```
-
-**The SDK does both phases for you inside `pay()`.** You just `await` one call. But knowing the
-two phases exist explains a few results you might see:
-
-- If Phase 1 is **declined**, `pay()` returns immediately — no Phase 2, `isSuccess: false`.
-- If Phase 1 is **approved** but Phase 2 **times out**, you get `isSuccess: true` with
-  `responseMessage: "Confirmation timed out"` — the money was authorized; reconcile if needed.
-- Phase 2 must happen within ~40 seconds (a protocol deadline). The SDK handles the timing.
-
----
-
-## 5. Reading the result
-
-Every payment returns a `PaymentResult`. Here is every field and when it's set:
-
-```ts
-const r = await naps.pay(125.0);
-
-r.isSuccess;         // boolean — true only if the payment was approved AND confirmed
-r.isCancelled;       // boolean — true if this was a cancellation/reversal outcome
-r.responseCode;      // "000" = approved; anything else is a decline/error (see §8)
-r.responseMessage;   // human text — the printed receipt, or the code's meaning
-
-r.stan;              // System Trace Audit Number — the transaction's unique id.
-                     // KEEP THIS. You need it to cancel/void or reprint later.
-
-r.cardNumber;        // masked PAN, e.g. "516794******3315" (never the full number)
-r.cardholderName;    // if the card provided it
-r.cardExpiry;        // "YYMM" if the card was read
-r.authorizationNumber; // bank authorization code
-r.transactionDate;   // "DDMMYYYY" as recorded by the terminal
-r.transactionTime;   // "HHMMSS"
-
-r.entryMode;         // EM (040) card entry mode, e.g. "CC" contactless
-r.sequence;          // NS (004) — keep it with the STAN to void later
-
-r.receiptText;       // raw receipt payload — merchant copy (PANs masked)
-r.receiptLines;      // parsed, printable lines (see below)
-r.customerReceiptText;  // customer copy, from the Phase-2 confirmation
-r.customerReceiptLines;
-```
-
-### Printing the receipt
-
-`receiptLines` is already parsed into lines with formatting hints, so you can drive a printer:
-
-```ts
-import { receiptToText } from "@tkpay/naps";
-
-if (r.receiptLines) {
-  for (const line of r.receiptLines) {
-    // line.text, line.bold (boolean), line.alignment ("left" | "center" | "right")
-    console.log(line.bold ? line.text.toUpperCase() : line.text);
-  }
-  // …or get a ready-to-print block in one call:
-  console.log(receiptToText(r.receiptLines, 40)); // 40-column width
-}
-```
-
----
-
-## 6. Connecting to your terminal
-
-### Sunmi P2/P3 — over the network (TCP)
-
-The terminal and your POS must be on the **same network**. The terminal listens on **port 4444**.
-
-```ts
-const naps = new NapsClient({
-  transport: "tcp",
-  tcpHost: "192.168.1.50", // the terminal's IP address
-  tcpPort: 4444,           // default, can be omitted
-});
-```
-
-### Ingenico Lane — over USB (serial)
-
-Plug the terminal in via USB. You can let the SDK **find it automatically** (it looks for the
-Ingenico USB vendor id `0x0B00`), or pass the port path yourself.
-
-```ts
-// Option A — auto-discover:
-const naps = new NapsClient({ transport: "serial" }); // path resolved on connect()
-
-// Option B — see what's connected, then choose:
-const ports = await NapsClient.listPorts();
-console.log(ports); // [{ path: "/dev/tty.usbmodem1401", vendorId: "0b00", ... }]
-
-const found = await NapsClient.findPort(); // "/dev/tty.usbmodem1401" | null
-const naps = new NapsClient({ transport: "serial", serialPath: found ?? undefined });
-```
-
-> Serial needs the optional `serialport` package (`npm install serialport`). If it's missing, the
-> SDK throws a clear message telling you to install it.
-
-The SDK connects lazily on your first operation, so you don't have to call `connect()` yourself —
-though you can, and should `disconnect()` when you're done:
-
-```ts
-await naps.connect();      // optional — happens automatically otherwise
-// … payments …
-naps.disconnect();         // release the socket / serial port
-```
-
----
-
-## 7. Every operation, explained
-
-```ts
-// Take a payment (two-phase, see §4). orderId is your own reference, optional.
-const pay = await naps.pay(125.0, "order-4711");
-
-// Cancel / void a previous payment by its STAN.
-// On NapsPay v5.4.4 you MUST pass the original amount too.
-// Optionally pass the payment's sequence number; it's sent as NSA (005).
-// Two-phase like a payment: TM 003 → 103, then TM 004 → 104 on the same connection.
-// voided.receiptLines = merchant copy, voided.customerReceiptLines = customer copy,
-// voided.stan = the void's own STAN.
-const voided = await naps.cancel(pay.stan!, 125.0, pay.sequence);
-if (voided.isPending) {
-  // No TM 104 reply (or CR 995): the reversal may or may not have run. Never assume it did —
-  // check the original payment by STAN.
-  const check = await naps.duplicateReceipt(pay.stan!);
-}
-
-// Health check — is the terminal ↔ bank link alive? Call before a busy period.
-const test = await naps.networkTest();      // { isSuccess, responseCode, message }
-
-// Load terminal parameters ("referencing"). "01" = merchant params, "02" = recharge.
-const ref = await naps.referencing("01");   // { isSuccess, parameterSet, receiptText }
-
-// End-of-day totals ticket.
-const totals = await naps.totals();         // { isSuccess, receiptText }
-
-// End-of-day settlement (telecollecte) — uploads the batch to the bank.
-// CR "052" = already settled today.
-const settled = await naps.settlement();    // { isSuccess, responseCode, message, date, time }
-
-// Reprint the last transaction's receipt, or a given STAN from today.
-const dup = await naps.duplicateReceipt();  // PaymentResult (with receiptLines)
-
-// Reset the PIN pad.
-await naps.resetPinPad();
-```
-
-### A realistic sale-then-refund
-
-```ts
-const naps = new NapsClient({ transport: "tcp", tcpHost: "192.168.1.50" });
-
-// 1) Make sure the terminal is reachable.
-if (!(await naps.networkTest()).isSuccess) {
-  throw new Error("Terminal offline — check the network");
-}
-
-// 2) Take the payment.
-const sale = await naps.pay(240.0);
-if (!sale.isSuccess) {
-  console.log(`Declined: ${sale.responseCode} ${sale.responseMessage}`);
-  return;
-}
-console.log(`Paid. Keep this STAN for refunds: ${sale.stan}`);
-
-// 3) Later — refund it. You need the STAN and the original amount.
-const refund = await naps.cancel(sale.stan!, 240.0);
-console.log(refund.isSuccess ? "Refunded" : `Refund failed: ${refund.responseCode}`);
-
+r.isSuccess;            // approved and confirmed
+r.responseCode;         // CR (013): "000" = approved
+r.responseMessage;      // receipt text, or the meaning of the code
+r.stan;                 // STAN (008) — keep it: needed to void or reprint
+r.sequence;             // NS (004) of the payment
+r.cardNumber;           // masked PAN, e.g. "516794******3315"
+r.cardExpiry;           // DAEX (017), YYMM
+r.cardholderName;       // NPRT (016), when the card provides it
+r.entryMode;            // EM (040), e.g. "CC" contactless
+r.authorizationNumber;  // NA (009)
+r.transactionDate;      // DA (014), DDMMYYYY
+r.transactionTime;      // HE (015), HHMMSS
+r.receiptLines;         // merchant copy (TM 101), parsed
+r.customerReceiptLines; // customer copy (TM 102), parsed
 naps.disconnect();
 ```
 
+`pay(amount, orderId)` accepts an `orderId` argument for your own bookkeeping; it is not sent to
+the terminal.
+
 ---
 
-## 8. Handling declines and errors
+## 4. How a void works
 
-There are three distinct things that can go "wrong", and you handle them differently:
+`cancel(stan, amountMad, originalSequence?)` voids a payment of the current day. It is also two
+exchanges on the same connection (spec §4.3–4.4):
 
-**1. A decline** — the terminal answered, but the bank said no. This is a *normal result*, not an
-exception. `isSuccess` is `false` and `responseCode` tells you why:
+```
+  your app (ECR)                         terminal
+       │  TM 003  cancellation (STAN, MT, new NS) ─▶│  looks the payment up
+       │◀─ TM 103  CR 000 = transaction found (merchant receipt)
+       │
+       │  TM 004  cancellation confirmation ───────▶│  executes the reversal
+       │          (same NS as TM 003, STAN, MT/DE and DATR/HETR echoed from TM 103)
+       │◀─ TM 104  CR 000 or 480 = void completed (customer receipt)
+```
+
+TM 103 CR 000 only means the payment was found. The reversal happens on TM 004, so the result
+depends on TM 104:
+
+| TM 104 | Result |
+|---|---|
+| CR `000` or `480` | **success**: `isSuccess: true`, `isCancelled: true` |
+| CR `995`, or no TM 104 reply within `confirmationTimeoutMs` | **pending**: `isSuccess: false`, `isPending: true` — the reversal may or may not have run |
+| any other CR | **failure**: `isSuccess: false` |
+| — (TM 103 refused, e.g. `302`) | **failure**, no TM 004 is sent |
+
+Always pass the original amount: NapsPay v5.4.4 expects it in the void frames, and a live terminal
+refused a TM 004 without it (CR 909).
 
 ```ts
-const r = await naps.pay(50);
-if (!r.isSuccess) {
-  switch (r.responseCode) {
-    case "116": console.log("Insufficient funds"); break;
-    case "101": console.log("Card expired"); break;
-    case "117": console.log("Wrong PIN"); break;
-    default:    console.log(r.responseMessage); // human text for any code
-  }
+import { NapsClient } from "@tkpay/naps";
+
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const sale = await naps.pay(20);
+
+const voided = await naps.cancel(sale.stan!, 20, sale.sequence);
+if (voided.isSuccess) {
+  console.log(`Voided (CR ${voided.responseCode}), void STAN ${voided.stan}`);
+} else if (voided.isPending) {
+  // Unknown outcome. Do not report the void as done, and do not blindly retry.
+  // The STAN and the TM 103 merchant receipt are kept on the result.
+  const check = await naps.duplicateReceipt(sale.stan!); // reprint the payment by STAN
+  console.log(`Void unconfirmed (${voided.responseCode}); check receipt:`, check.receiptText);
+} else {
+  console.log(`Void failed: ${voided.responseCode} ${voided.responseMessage}`);
 }
+naps.disconnect();
 ```
 
-You don't have to memorize codes — `responseMessage` already carries the meaning, and you can look
-any code up:
+On a success, `voided.receiptLines` is the merchant copy (TM 103) and
+`voided.customerReceiptLines` the customer copy (TM 104; the terminal sends no receipt with CR 480).
+`originalSequence`, when given, is sent as NSA (005) on TM 003 only. A timeout on TM 003 itself
+returns `responseCode: "TIMEOUT"`.
+
+---
+
+## 5. Other operations
+
+Each opens (or reuses) the connection, sends one frame with your NCAI (and a fresh sequence number,
+except settlement) and reads one response.
+
+**Network test** (TM 009) — checks the terminal ↔ host link:
 
 ```ts
-import { describeResponse } from "@tkpay/naps";
-describeResponse("116"); // "Insufficient funds"
-describeResponse("909"); // "System failure"
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const test = await naps.networkTest(); // { isSuccess, responseCode, message }
+console.log(test.isSuccess ? "Network OK" : test.message);
+naps.disconnect();
 ```
 
-The full list is the spec §6 table, exported as `RESPONSE_CODES`. Codes `000/001/003/007` mean
-approved; everything else is a decline or error.
-
-**2. A timeout** — the terminal didn't answer in time (customer walked away, cable unplugged). The
-SDK returns a result with `responseCode: "TIMEOUT"` rather than throwing, so your flow stays simple:
+**Duplicate receipt** (TM 008) — reprints the last transaction, or a given STAN from today:
 
 ```ts
-const r = await naps.pay(50);
-if (r.responseCode === "TIMEOUT") console.log("No response — retry or check the terminal");
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const last = await naps.duplicateReceipt();          // PaymentResult
+const byStan = await naps.duplicateReceipt("703062"); // CR ≠ 000 if not found
+console.log(last.isSuccess, byStan.responseCode);
+naps.disconnect();
 ```
 
-**3. A transport failure** — the socket couldn't even connect. This *throws*. Wrap connection-time
-code in try/catch:
+**Totals** (TM 010) — the running totals ticket:
 
 ```ts
+import { NapsClient, parseReceipt, receiptToText } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const totals = await naps.totals(); // { isSuccess, responseCode, receiptText }
+console.log(receiptToText(parseReceipt(totals.receiptText ?? "")));
+naps.disconnect();
+```
+
+**Settlement** (TM 010, telecollecte) — uploads the day's batch to the host. The terminal must be
+idle and referenced:
+
+```ts
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const s = await naps.settlement(); // { isSuccess, responseCode, message, date, time }
+console.log(s.isSuccess ? `Settled ${s.date} ${s.time}` : s.message); // CR 052 = already settled today
+naps.disconnect();
+```
+
+**Referencing** (TM 013) — loads a parameter set: `"01"` merchant (default), `"02"` recharge:
+
+```ts
+import { NapsClient, TIDE } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const ref = await naps.referencing(TIDE.MERCHANT); // { isSuccess, responseCode, parameterSet, receiptText }
+console.log(ref.parameterSet, ref.isSuccess);
+naps.disconnect();
+```
+
+**Reset PIN pad** (TM 012) — maintenance command, returns nothing:
+
+```ts
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+await naps.resetPinPad();
+naps.disconnect();
+```
+
+**Port discovery** (USB serial only):
+
+```ts
+import { NapsClient } from "@tkpay/naps";
+const ports = await NapsClient.listPorts(); // [{ path, vendorId, productId, manufacturer }]
+const ingenico = await NapsClient.findPort(); // path or null
+console.log(ports, ingenico);
+```
+
+---
+
+## 6. Receipts, PAN masking, response codes
+
+**Receipts.** The terminal sends receipts in the DP (010) field: line groups separated by `*`,
+each made of sub-tags 030 (line number), 031 (format: `S` simple, `G` bold), 032 (alignment: `C`
+centre, `D` right, `G` left) and 033 (text). The SDK parses them into `ReceiptLine` objects:
+
+```ts
+import { parseReceipt, receiptToText, type ReceiptLine } from "@tkpay/naps";
+
+function print(lines: ReceiptLine[]): void {
+  for (const line of lines) console.log(line.lineNumber, line.bold, line.alignment, line.text);
+  console.log(receiptToText(lines, 40)); // plain text, centred/right-aligned to 40 columns
+}
+print(parseReceipt("03000201031001G032001C033005TKpay"));
+```
+
+`receiptText` / `customerReceiptText` hold the raw DP block; `receiptLines` /
+`customerReceiptLines` the parsed lines.
+
+**PAN masking.** The full card number never reaches your code: the NCAR (007) field is masked on
+parse (first 6 + last 4 digits, e.g. `516794******3315`), and any 16-digit number inside receipt
+text is masked the same way. The helpers are exported as `maskPan` and `maskPansInText`.
+
+**Response codes.** CR (013) is a 3-digit code. `000`, `001`, `003` and `007` are approvals for a
+payment. The full table from spec §6 is exported as `RESPONSE_CODES`:
+
+```ts
+import { RESPONSE_CODES, describeResponse, isApproved } from "@tkpay/naps";
+describeResponse("116");        // "Insufficient funds"
+isApproved("000");              // true
+Object.keys(RESPONSE_CODES).length;
+```
+
+---
+
+## 7. Errors and timeouts
+
+There are three kinds of outcome:
+
+1. **A decline or refusal** — a normal result: `isSuccess: false` and the terminal's
+   `responseCode`. Nothing is thrown.
+2. **A timeout** — handled differently per operation:
+
+   | Operation | Timeout option (default) | On timeout |
+   |---|---|---|
+   | `pay()` TM 001 | `paymentTimeoutMs` (120 s) | returns `responseCode: "TIMEOUT"` |
+   | `pay()` TM 002 | `confirmationTimeoutMs` (40 s) | returns the approval, `responseMessage: "Confirmation timed out"` |
+   | `cancel()` TM 003 | `testTimeoutMs` (30 s) | returns `responseCode: "TIMEOUT"` |
+   | `cancel()` TM 004 | `confirmationTimeoutMs` (40 s) | returns `isPending: true`, `responseCode: "TIMEOUT"` |
+   | `networkTest()`, `totals()` | `testTimeoutMs` (30 s) | **throws** `TerminalTimeoutError` |
+   | `referencing()` | `referencingTimeoutMs` (60 s) | **throws** `TerminalTimeoutError` |
+   | `settlement()` | `paymentTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
+   | `duplicateReceipt()`, `resetPinPad()` | fixed 15 s | **throws** `TerminalTimeoutError` |
+   | connecting | `tcpConnectTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
+
+3. **A transport error** — connection refused, socket closed before a response, serial port
+   missing: the operation **throws** (a Node.js `Error`, e.g. `ECONNREFUSED`).
+
+```ts
+import { NapsClient, TerminalTimeoutError } from "@tkpay/naps";
+
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
 try {
-  await naps.connect();
+  const r = await naps.pay(50);
+  if (r.responseCode === "TIMEOUT") console.log("No answer from the terminal");
+  else if (!r.isSuccess) console.log(`Declined: ${r.responseCode} ${r.responseMessage}`);
 } catch (err) {
-  console.error("Could not reach the terminal:", err);
+  if (err instanceof TerminalTimeoutError) console.log("Timed out:", err.message);
+  else console.log("Cannot reach the terminal:", (err as Error).message);
+} finally {
+  naps.disconnect();
 }
 ```
 
+**Response framing.** Responses end with `!` (protocol v2) or `?` (v1). The SDK reads up to either
+one; if neither arrives — the live v5.4.4 terminal sends TM 103/104 without one — it treats 1 second
+of silence as the end of the message. A void therefore takes about 2 seconds longer than its network
+round-trips.
+
 ---
 
-## 9. v1 vs v2: the protocol switch
+## 8. Connecting and options
 
-NAPS terminals come in two protocol generations. They differ in one wire detail that matters: how
-a response message ends.
+The client connects on the first operation and keeps the connection open for the next ones. Call
+`disconnect()` when you are done. `connect()` is available if you want to connect up front.
 
-| `protocolVersion` | Response ends with | Confirmation carries §4.2 fields | Terminals |
-|---|---|---|---|
-| `"v2"` | `!` | yes (`MT`/`DE`/`NCAR`/`DAEX`) | Sunmi P2/P3 — NapsPay **v5.4.4+** |
-| `"v1"` | `?` | no | Ingenico Lane — legacy |
-
-**The default is chosen for you based on the transport, so you normally set nothing:**
-
-- `transport: "tcp"` (Sunmi) → defaults to **`"v2"`**
-- `transport: "serial"` (Ingenico) → defaults to **`"v1"`**
-
-Only pass `protocolVersion` if your terminal is unusual (e.g. a Sunmi still on the old protocol, or
-an Ingenico that has been updated). An explicit value always wins:
+**Sunmi over Wi-Fi (TCP).** The POS and the terminal must be on the same network; NapsPay listens on
+port 4444.
 
 ```ts
-// Ingenico on USB — already defaults to v1, nothing to set:
-const lane = new NapsClient({ transport: "serial" });
-
-// Force a version only if you need to override the transport default:
-const naps = new NapsClient({ transport: "tcp", protocolVersion: "v1" });
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({ transport: "tcp", tcpHost: "192.168.1.50", tcpPort: 4444 });
+await naps.connect();
 ```
 
-Getting this wrong isn't catastrophic — the SDK has a 1-second fallback if it doesn't see the
-expected terminator — but matching it makes every transaction instant instead of adding ~1s.
-
----
-
-## 10. Full options reference
+**Ingenico over USB (serial).** Requires `serialport`. Omit `serialPath` to auto-discover the port
+(USB vendor id `0x0B00`, falling back to the first `usbmodem` / `ttyACM` device).
 
 ```ts
-new NapsClient({
-  transport: "tcp",          // "tcp" (Sunmi) | "serial" (Ingenico). Default "tcp".
+import { NapsClient } from "@tkpay/naps";
+const lane = new NapsClient({ transport: "serial" });                                    // auto-discover
+const lane2 = new NapsClient({ transport: "serial", serialPath: "/dev/tty.usbmodem1401" }); // explicit
+```
 
-  // TCP transport
-  tcpHost: "192.168.1.50",   // required for tcp
-  tcpPort: 4444,             // default 4444
+**Protocol version.** `protocolVersion` selects the expected terminator: `"v2"` (`!`, NapsPay
+v5.4.4) or `"v1"` (`?`, legacy). It defaults to `"v2"` for TCP and `"v1"` for serial; an explicit
+value wins. A mismatch still works, because the reader accepts either terminator.
+
+**All options** (every one is optional except `tcpHost` for TCP):
+
+```ts
+import { NapsClient } from "@tkpay/naps";
+const naps = new NapsClient({
+  transport: "tcp",                    // "tcp" | "serial"
+  tcpHost: "192.168.1.50",
+  tcpPort: 4444,
   tcpConnectTimeoutMs: 120_000,
-
-  // Serial transport
-  serialPath: "/dev/tty.usbmodem1401", // omit to auto-discover (VID 0x0B00)
+  serialPath: undefined,               // serial: omit to auto-discover
   serialBaudRate: 115_200,
-  protocolVersion: "v2",     // "v1" | "v2" — defaults per transport (serial→v1, tcp→v2); see §9
-
-  // Identity (goes into the NCAI field)
-  registerId: "01",          // 2 digits
-  cashierId: "00001",        // 5 digits
-
-  // Timeouts (milliseconds)
-  paymentTimeoutMs: 120_000,      // Phase 1 authorization
-  confirmationTimeoutMs: 40_000,  // Phase 2 confirmation (protocol deadline)
+  protocolVersion: "v2",               // default per transport
+  registerId: "01",                    // 2 digits  } sent as NCAI (003)
+  cashierId: "00001",                  // 5 digits  }
+  paymentTimeoutMs: 120_000,
+  confirmationTimeoutMs: 40_000,       // protocol deadline for TM 002 / TM 004
   testTimeoutMs: 30_000,
   referencingTimeoutMs: 60_000,
 });
 ```
 
-Every field is optional except `tcpHost` (for TCP). Defaults shown above.
-
 ---
 
-## 11. Testing without a real terminal
+## 9. Testing with the emulator
 
-You don't need hardware to develop. The [`tkpay-naps-emulator`](https://github.com/Belkouche/tkpay-naps-emulator)
-is a Python program that behaves like a real NAPS terminal on `localhost:4444`.
-
-```bash
-# In one terminal — start the emulator (approves everything by default):
-python3 naps_emulator.py
-
-# It can also simulate declines and edge cases:
-python3 naps_emulator.py --mode decline                 # every payment declined
-python3 naps_emulator.py --mode error --code insufficient_funds
-python3 naps_emulator.py --protocol v1                  # legacy '?' terminator
-```
-
-Point the SDK at it:
-
-```ts
-const naps = new NapsClient({ transport: "tcp", tcpHost: "127.0.0.1", tcpPort: 4444 });
-await naps.pay(10); // → approved by the emulator
-```
-
-### Running this SDK's own tests
+The [`tkpay-naps-emulator`](https://github.com/Belkouche/tkpay-naps-emulator) is a Python 3
+(standard library only) program that behaves like a NapsPay terminal over TCP.
 
 ```bash
-npm test              # everything (unit + integration)
-npm run test:unit     # pure logic — protocol, receipt, client, discovery
-npm run test:integration  # drives the Python emulator (auto-skips if not installed)
+python3 /Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py --port 4444
 ```
 
-Unit tests need nothing installed. The integration suite spawns the emulator automatically and is
-skipped cleanly if it isn't present on your machine.
+Useful `--mode` values:
 
----
-
-## 12. Glossary
-
-| Term | Meaning |
+| Mode | Behaviour |
 |---|---|
-| **ECR** | Electronic Cash Register — your POS application (this SDK's caller). |
-| **STAN** | System Trace Audit Number — a transaction's unique id. Save it to cancel/reprint. |
-| **TLV** | Tag-Length-Value — the compact text format messages are encoded in. The SDK hides it. |
-| **NCAI** | Register + cashier identifier sent with each request (`registerId` + `cashierId`). |
-| **TIDE** | Which parameter set to load during *referencing*: `01` merchant, `02` recharge. |
-| **DATR / HETR** | Original transaction date / time — echoed back on a cancellation. |
-| **Two-phase** | Authorization (TM 001) then Confirmation (TM 002) — see §4. |
-| **Response code** | 3-digit outcome. `000` = approved. Look any code up with `describeResponse()`. |
+| `approve` (default) | every payment and void succeeds |
+| `decline` | TM 101 returns CR 100 |
+| `error --code 116` | TM 101 returns the given code (number or name, e.g. `insufficient_funds`) |
+| `timeout` | TM 001 gets no reply |
+| `no_confirm` | TM 002 gets no reply |
+| `confirm_error --code 482` | TM 101 approves, TM 102 refuses with the code |
+| `void_refuse --code 302` | TM 103 refuses the void |
+| `void_480` | TM 104 returns CR 480 (success) |
+| `void_995` | TM 104 returns CR 995 (pending) |
+| `void_no_confirm` | TM 004 gets no reply (pending) |
+
+`--protocol v1` switches responses to the `?` terminator; `--debug` prints every TLV field. The
+void modes need an emulator version that implements the two-phase void (commit `5cc8536` or later).
+
+**This repo's tests:**
+
+```bash
+npm run build
+npm run typecheck
+npm run test:unit          # protocol, receipts, client logic, transport — no emulator needed
+npm run test:integration   # starts the emulator itself, one process per mode
+npm test                   # everything
+```
+
+The integration suite starts the emulator on port 4471 by default and skips itself if the emulator
+file is missing. Override the location and port with:
+
+```bash
+NAPS_EMULATOR=/path/to/naps_emulator.py NAPS_EMULATOR_PORT=4453 npm test
+```
 
 ---
+
+## 10. Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---|---|
+| `ECONNREFUSED` thrown | Wrong IP or port, terminal not on the same network, or NapsPay not running / not on its waiting screen. Check the terminal IP and port 4444. |
+| `pay()` returns `"TIMEOUT"` | Nobody presented a card within `paymentTimeoutMs`, or the terminal is busy. Check the terminal screen before retrying. |
+| `TerminalTimeoutError` thrown | A management operation (network test, totals, referencing, settlement, duplicate, reset) got no reply. |
+| Every response takes ~1 s longer | The terminal ends responses with the other terminator; set `protocolVersion` to match. Expected on voids (TM 103/104 carry no terminator). |
+| CR `909` | System failure on the terminal or host. A live terminal also returned it for a void without the amount — always pass it to `cancel()`. |
+| CR `302` | Record not found: wrong STAN, or the payment is not from the current day. |
+| CR `482` | Transaction already cancelled. On TM 102 the terminal reversed the sale itself. |
+| CR `052` on `settlement()` | Already settled today. |
+| `cancel()` returns `isPending: true` | TM 104 was CR 995 or never arrived. The void may have gone through: reprint the payment with `duplicateReceipt(stan)` and reconcile before doing anything else. |
+| `serialport` error | Install it: `npm install serialport` (only for USB). |
+| `No Ingenico serial port found` | Cable not connected, or the port is not detected; pass `serialPath` explicitly (`NapsClient.listPorts()` lists candidates). |
+
+---
+
+## 11. Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). v1.2.0 brings the SDK in line with NapsPay v5.4.4 (two-phase
+void, settlement, customer receipts, PAN masking at parse).
 
 ## License
 
