@@ -6,8 +6,10 @@
  * DP3(032) alignment (C=centre, D=right, G/other=left), DP4(033) content. The whole
  * block may end with a '?' marker, which is ignored.
  *
- * Port of the Aslan.Naps C# `ReceiptParser`.
+ * Port of the Aslan.Naps C# `ReceiptParser`. Any 16-digit PAN in a line is masked.
  */
+
+import { maskPansInText } from "./tlv.js";
 
 export type ReceiptAlignment = "left" | "center" | "right";
 
@@ -59,7 +61,7 @@ export function parseReceipt(dp: string): ReceiptLine[] {
 
     lines.push({
       lineNumber,
-      text: content,
+      text: maskPansInText(content),
       bold: format === "G",
       alignment: alignment === "C" ? "center" : alignment === "D" ? "right" : "left",
     });

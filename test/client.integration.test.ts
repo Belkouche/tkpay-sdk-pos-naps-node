@@ -10,7 +10,7 @@ import { NapsClient } from "../src/index.js";
  */
 
 const EMULATOR = "/Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py";
-const PORT = 4471;
+const PORT = Number(process.env.NAPS_EMULATOR_PORT ?? 4471);
 const HOST = "127.0.0.1";
 
 function waitForPort(port: number, host: string, timeoutMs = 5000): Promise<void> {
@@ -64,6 +64,24 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     expect(res.stan).toBeTruthy();
     expect(res.cardNumber).toBe("516794******3315");
     expect(res.receiptLines?.length).toBeGreaterThan(0);
+  });
+
+  it("returns the Phase-2 customer receipt and entry mode", async () => {
+    const res = await newClient().pay(15);
+    expect(res.isSuccess).toBe(true);
+    expect(res.customerReceiptLines?.length).toBeGreaterThan(0);
+    expect(res.entryMode).toBe("CC");
+  });
+
+  it("settlement (TM 010) is accepted", async () => {
+    const res = await newClient().settlement();
+    expect(res.isSuccess).toBe(true);
+    expect(res.responseCode).toBe("000");
+  });
+
+  it("duplicate receipt succeeds", async () => {
+    const res = await newClient().duplicateReceipt();
+    expect(res.isSuccess).toBe(true);
   });
 
   it("cancels a payment by STAN with amount", async () => {

@@ -16,7 +16,8 @@ export const TAG = {
   MT: "002",
   NCAI: "003",
   NS: "004",
-  NSA: "005", // sequence number to cancel (optional, TM 001)
+  NSA: "005", // original sequence number to cancel (TM 003)
+  NHC: "006", // hostess number
   NCAR: "007",
   STAN: "008",
   NA: "009", // authorization number (legacy/vendor tag; not in v2 §3.3 but emitted)
@@ -31,7 +32,19 @@ export const TAG = {
   DATR: "018", // original transaction date
   HETR: "019", // original transaction time
   TIDE: "020", // parameter set: 01=Merchant, 02=Recharge
+  TYPA: "021", // transaction type
+  RE: "022", // receipt data
+  RECB: "023", // receipt copy
+  REQU: "024", // request type
+  RESE: "025", // response message
+  RECO: "026", // receipt confirmation
+  RERA: "027", // response reason
+  MDLC: "028", // model code
+  EM: "040", // entry mode
 } as const;
+
+/** Receipt sub-tags inside the DP (010) print block (v2 §5). */
+export const RECEIPT_TAG = { LINE_NUMBER: "030", FORMAT: "031", ALIGNMENT: "032", CONTENT: "033" } as const;
 
 /** Message types (v2 §3.4). */
 export const TM = {
@@ -41,8 +54,19 @@ export const TM = {
   DUPLICATE: "008",
   NETWORK_TEST: "009",
   TOTALS: "010",
+  SETTLEMENT: "010", // telecollecte — shares TM 010 with totals
   RESET_PINPAD: "012",
   REFERENCING: "013",
+  // Terminal → ECR responses (request TM + 100).
+  PAYMENT_RESPONSE: "101",
+  CONFIRMATION_RESPONSE: "102",
+  CANCELLATION_RESPONSE: "103",
+  CANCELLATION_CORRECTION: "104", // NapsPay v5.4.4+: also a successful void
+  DUPLICATE_RESPONSE: "108",
+  NETWORK_TEST_RESPONSE: "109",
+  TOTALS_RESPONSE: "110",
+  RESET_PINPAD_RESPONSE: "112",
+  REFERENCING_RESPONSE: "113",
 } as const;
 
 /** TIDE parameter sets (TM 013 Referencing). */
@@ -233,20 +257,35 @@ export function buildConfirmation(stan: string, opts: BuildConfirmationOptions =
   return fields.join("");
 }
 
+/**
+ * Cancellation (TM 003). NapsPay v5.4.4+ requires the original amount (MT 002);
+ * `originalSequence` is sent as NSA (005), the sequence number of the payment to void.
+ */
 export function buildCancellation(
   stan: string,
-  opts: { ncai?: string; ns?: string; amountCentimes?: number } = {},
+  opts: { ncai?: string; ns?: string; amountCentimes?: number; originalSequence?: string } = {},
 ): string {
   const extra: Array<[string, string]> = [[TAG.STAN, stan]];
   if (opts.amountCentimes !== undefined && opts.amountCentimes > 0) {
     extra.push([TAG.MT, String(opts.amountCentimes)]);
   }
+  if (opts.originalSequence) extra.push([TAG.NSA, opts.originalSequence]);
   return buildMessage(TM.CANCELLATION, { ncai: opts.ncai, ns: opts.ns, extraFields: extra });
 }
 
 /**
+ * Settlement / telecollecte (TM 010): TM + NCAI + DA + HE, no sequence number
+ * (same frame as the canonical C# SDK).
+ */
+export function buildSettlement(ncai = "0100001"): string {
+  const t = now();
+  return tlv(TAG.TM, TM.SETTLEMENT) + tlv(TAG.NCAI, ncai) + tlv(TAG.DA, t.date) + tlv(TAG.HE, t.time);
+}
+
+/**
  * Parse a TLV string → { tag: value }. Stops at the first terminator ('!' v2, '?' v1)
- * so trailing receipt/noise after it is ignored.
+ * so trailing receipt/noise after it is ignored. The PAN in NCAR (007) is masked on
+ * parse so the full card number never leaves this function.
  */
 export function parseMessage(raw: string): Record<string, string> {
   let data = raw;
@@ -262,7 +301,8 @@ export function parseMessage(raw: string): Record<string, string> {
     const len = Number(lenStr);
     if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || Number.isNaN(len)) break;
     if (pos + 6 + len > data.length) break;
-    fields[tag] = data.slice(pos + 6, pos + 6 + len);
+    const value = data.slice(pos + 6, pos + 6 + len);
+    fields[tag] = tag === TAG.NCAR ? maskPan(value) : value;
     pos += 6 + len;
   }
   return fields;
@@ -280,6 +320,11 @@ export function describeResponse(cr: string | undefined | null): string {
 export function maskPan(pan: string): string {
   if (pan.length < 10) return pan;
   return pan.slice(0, 6) + "*".repeat(pan.length - 10) + pan.slice(-4);
+}
+
+/** Mask any 16-digit card numbers found in free text (e.g. receipt lines). */
+export function maskPansInText(text: string): string {
+  return text.replace(/\b\d{16}\b/g, maskPan);
 }
 
 /** Return the last '!'/'?'-terminated message from a raw stream. */

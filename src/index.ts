@@ -7,6 +7,7 @@ export type {
   TestResult,
   ReferencingResult,
   TotalsResult,
+  SettlementResult,
 } from "./models.js";
 export type { ReceiptLine, ReceiptAlignment } from "./protocol/receipt.js";
 export { parseReceipt, receiptToText } from "./protocol/receipt.js";
@@ -15,16 +16,19 @@ export {
   TAG,
   TM,
   TIDE,
+  RECEIPT_TAG,
   RESPONSE_CODES,
   APPROVED_CODES,
   tlv,
   buildMessage,
   buildConfirmation,
   buildCancellation,
+  buildSettlement,
   parseMessage,
   isApproved,
   describeResponse,
   maskPan,
+  maskPansInText,
   extractLastMessage,
 } from "./protocol/tlv.js";
 export { TerminalTimeoutError } from "./transport/transport.js";

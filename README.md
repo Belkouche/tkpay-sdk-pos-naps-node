@@ -176,8 +176,13 @@ r.authorizationNumber; // bank authorization code
 r.transactionDate;   // "DDMMYYYY" as recorded by the terminal
 r.transactionTime;   // "HHMMSS"
 
-r.receiptText;       // raw receipt payload
+r.entryMode;         // EM (040) card entry mode, e.g. "CC" contactless
+r.sequence;          // NS (004) — keep it with the STAN to void later
+
+r.receiptText;       // raw receipt payload — merchant copy (PANs masked)
 r.receiptLines;      // parsed, printable lines (see below)
+r.customerReceiptText;  // customer copy, from the Phase-2 confirmation
+r.customerReceiptLines;
 ```
 
 ### Printing the receipt
@@ -252,7 +257,8 @@ const pay = await naps.pay(125.0, "order-4711");
 
 // Cancel / void a previous payment by its STAN.
 // On NapsPay v5.4.4 you MUST pass the original amount too.
-const voided = await naps.cancel(pay.stan!, 125.0);
+// Optionally pass the payment's sequence number; it's sent as NSA (005).
+const voided = await naps.cancel(pay.stan!, 125.0, pay.sequence);
 
 // Health check — is the terminal ↔ bank link alive? Call before a busy period.
 const test = await naps.networkTest();      // { isSuccess, responseCode, message }
@@ -262,6 +268,10 @@ const ref = await naps.referencing("01");   // { isSuccess, parameterSet, receip
 
 // End-of-day totals ticket.
 const totals = await naps.totals();         // { isSuccess, receiptText }
+
+// End-of-day settlement (telecollecte) — uploads the batch to the bank.
+// CR "052" = already settled today.
+const settled = await naps.settlement();    // { isSuccess, responseCode, message, date, time }
 
 // Reprint the last transaction's receipt.
 const dup = await naps.duplicateReceipt();  // PaymentResult (with receiptLines)

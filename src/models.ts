@@ -90,7 +90,16 @@ export interface PaymentResult {
   cardExpiry?: string;
   receiptText?: string;
   receiptLines?: ReceiptLine[];
+  /** Phase-2 (TM 102) DP — customer copy of the receipt; Phase-1 DP is the merchant copy. */
+  customerReceiptText?: string;
+  customerReceiptLines?: ReceiptLine[];
   cardholderName?: string;
+  /** EM (040) — card entry mode (e.g. contactless, chip). */
+  entryMode?: string;
+  /** NCAI (003) echoed by the terminal (register + cashier). */
+  ncai?: string;
+  /** NS (004) — sequence number of the transaction. */
+  sequence?: string;
 }
 
 export interface TestResult {
@@ -105,6 +114,17 @@ export interface ReferencingResult {
   /** TIDE (020) echoed by the terminal: which parameter set was loaded. */
   parameterSet?: string;
   receiptText?: string;
+}
+
+export interface SettlementResult {
+  isSuccess: boolean;
+  responseCode?: string;
+  /** Human-readable status ("052" = already settled today). */
+  message?: string;
+  /** DA (014) — settlement date (DDMMYYYY). */
+  date?: string;
+  /** HE (015) — settlement time (HHMMSS). */
+  time?: string;
 }
 
 export interface TotalsResult {

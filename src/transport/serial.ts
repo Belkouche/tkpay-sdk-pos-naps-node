@@ -85,7 +85,10 @@ export class SerialTransport implements Transport {
 
       const onData = (chunk: Buffer) => {
         buf += chunk.toString("utf8");
-        const idx = buf.indexOf(this.terminator);
+        let idx = buf.indexOf(this.terminator);
+        // A chunk ending in the other generation's terminator also ends the frame, so a
+        // v1/v2 mismatch skips the 1s silence fallback (matches the canonical C# reader).
+        if (idx < 0 && /[!?]$/.test(buf)) idx = buf.length - 1;
         if (idx >= 0) {
           finish(null, buf.slice(0, idx + 1));
         } else {

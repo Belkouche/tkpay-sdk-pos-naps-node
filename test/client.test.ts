@@ -64,6 +64,33 @@ describe("NapsClient.pay", () => {
     expect(p2[TAG.STAN]).toBe("703062");
   });
 
+  it("returns the Phase-2 customer receipt and EM/NCAI/NS from the response", async () => {
+    const merchantDp = "03000201031001S032001C033008MERCHANT";
+    const customerDp = "03000201031001S032001C033008CUSTOMER";
+    const phase1 = common("101", "000", tlv(TAG.STAN, "703062") + tlv(TAG.EM, "CC") + tlv(TAG.DP, merchantDp));
+    const phase2 = common("102", "000", tlv(TAG.STAN, "703062") + tlv(TAG.DP, customerDp));
+    const res = await client(new FakeTransport([phase1, phase2])).pay(12.5);
+
+    expect(res.receiptLines?.[0].text).toBe("MERCHANT");
+    expect(res.customerReceiptText).toBe(customerDp);
+    expect(res.customerReceiptLines?.[0].text).toBe("CUSTOMER");
+    expect(res.entryMode).toBe("CC");
+    expect(res.ncai).toBe("0100001");
+    expect(res.sequence).toBe("000001");
+  });
+
+  it("never exposes a full PAN from NCAR or the print block", async () => {
+    const dp = "03000201031001S032001G033022CARTE 5167941234563315";
+    const phase1 = common("101", "000", tlv(TAG.STAN, "703062") + tlv(TAG.NCAR, "5167941234563315") + tlv(TAG.DP, dp));
+    const t = new FakeTransport([phase1, common("102", "000")]);
+    const res = await client(t).pay(12.5);
+
+    expect(res.cardNumber).toBe("516794******3315");
+    expect(res.receiptText).not.toContain("5167941234563315");
+    expect(res.receiptLines?.[0].text).toBe("CARTE 516794******3315");
+    expect(parseMessage(t.sent[1])[TAG.NCAR]).toBe("516794******3315");
+  });
+
   it("returns a decline without confirming", async () => {
     const t = new FakeTransport([common("101", "116", tlv(TAG.STAN, "000001"))]);
     const res = await client(t).pay(12.5);
@@ -109,6 +136,13 @@ describe("NapsClient.cancel", () => {
     expect(req[TAG.MT]).toBe("1250");
   });
 
+  it("sends the original sequence as NSA (005) when given", async () => {
+    const t = new FakeTransport([common("104", "000", tlv(TAG.STAN, "703062"))]);
+    const res = await client(t).cancel("703062", 12.5, "000003");
+    expect(res.isSuccess).toBe(true); // TM 104 (v5.4.4 correction) is a successful void
+    expect(parseMessage(t.sent[0])[TAG.NSA]).toBe("000003");
+  });
+
   it("accepts CR=480 (reversal accepted) as success", async () => {
     const t = new FakeTransport([common("103", "480", tlv(TAG.STAN, "703062"))]);
     const res = await client(t).cancel("703062", 12.5);
@@ -130,5 +164,48 @@ describe("NapsClient.networkTest / referencing", () => {
     expect(res.isSuccess).toBe(true);
     expect(res.parameterSet).toBe("02");
     expect(parseMessage(t.sent[0])[TAG.TIDE]).toBe("02");
+  });
+
+  it("referencing falls back to the requested TIDE when not echoed", async () => {
+    const t = new FakeTransport([common("113", "000")]);
+    expect((await client(t).referencing("02")).parameterSet).toBe("02");
+  });
+});
+
+describe("NapsClient management operations", () => {
+  it("send the client's NCAI and a fresh sequence number", async () => {
+    const t = new FakeTransport([common("109", "000"), common("110", "000"), common("112", "000")]);
+    const c = new NapsClient({ transport: "tcp", tcpHost: "127.0.0.1", registerId: "02", cashierId: "00005" }, t);
+    await c.networkTest();
+    await c.totals();
+    await c.resetPinPad();
+    const sent = t.sent.map(parseMessage);
+    expect(sent.map((f) => f[TAG.NCAI])).toEqual(["0200005", "0200005", "0200005"]);
+    expect(sent.map((f) => f[TAG.NS])).toEqual(["000001", "000002", "000003"]);
+  });
+
+  it("duplicateReceipt reports success on CR=000", async () => {
+    const t = new FakeTransport([common("108", "000", tlv(TAG.STAN, "703062"))]);
+    const res = await client(t).duplicateReceipt();
+    expect(res.isSuccess).toBe(true);
+    expect(res.stan).toBe("703062");
+  });
+});
+
+describe("NapsClient.settlement", () => {
+  it("sends TM 010 without a sequence and maps CR=000 with date/time", async () => {
+    const t = new FakeTransport([common("110", "000")]);
+    const res = await client(t).settlement();
+    expect(res).toMatchObject({ isSuccess: true, responseCode: "000", date: "11092026", time: "133441" });
+    const req = parseMessage(t.sent[0]);
+    expect(req[TAG.TM]).toBe("010");
+    expect(req[TAG.NCAI]).toBe("0100001");
+    expect(req[TAG.NS]).toBeUndefined();
+  });
+
+  it("maps CR=052 to 'already settled today'", async () => {
+    const res = await client(new FakeTransport([common("110", "052")])).settlement();
+    expect(res.isSuccess).toBe(false);
+    expect(res.message).toBe("Already settled today");
   });
 });

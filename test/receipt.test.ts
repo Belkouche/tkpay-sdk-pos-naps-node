@@ -38,6 +38,11 @@ describe("parseReceipt", () => {
     expect(lines.map((l) => l.text)).toEqual(["A", "B"]);
   });
 
+  it("masks a full PAN printed on a line", () => {
+    const lines = parseReceipt(line(3, "CARTE: 5167941234563315", "S", "G"));
+    expect(lines[0].text).toBe("CARTE: 516794******3315");
+  });
+
   it("returns empty for empty input", () => {
     expect(parseReceipt("")).toEqual([]);
   });

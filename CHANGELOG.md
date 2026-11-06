@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.2.0 — NapsPay v5.4.4 sync with the canonical C# SDK
+
+Brings the Node port in line with `tkpay-sdk-pos-naps-csharp` v1.4.0 (NapsPay v5.4.4,
+TLV spec v2.0). Additive; no breaking changes.
+
+- **feat:** `settlement()` — TM 010 telecollecte (TM + NCAI + DA + HE, no NS) →
+  `SettlementResult` `{ isSuccess, responseCode, message, date, time }`; CR 052 maps to
+  "Already settled today", 909 to "Terminal or server is down".
+- **feat:** `cancel(stan, amountMad?, originalSequence?)` — the original sequence is sent
+  as NSA (005), as in the C# cancellation frame. TM 103 and TM 104 both count as success.
+- **feat:** `pay()` now returns the Phase-2 (TM 102) DP as the customer receipt
+  (`customerReceiptText` / `customerReceiptLines`), plus `entryMode` (EM 040), `ncai`
+  and `sequence` from the response.
+- **feat:** full v5.4.4 tag set (NHC 006, TYPA–MDLC 021–028, EM 040), `RECEIPT_TAG`
+  sub-tags (030–033), response message types (101…113) in `TM`, and `buildSettlement`.
+- **fix (PCI):** NCAR (007) is masked in `parseMessage`, so the full PAN never leaves the
+  parser; 16-digit PANs are masked in receipt lines and in `receiptText` /
+  `responseMessage` (`maskPansInText`).
+- **fix:** management operations (network test, referencing, totals, duplicate, reset)
+  now send the client's NCAI and a fresh sequence instead of the hard-coded
+  `0100001` / `000001`.
+- **fix:** `duplicateReceipt()` reported `isSuccess: false` even on CR 000.
+- **fix:** `referencing()` returns the requested TIDE as `parameterSet` when the terminal
+  doesn't echo it.
+- **fix:** TCP/serial reads end immediately on a chunk ending in either terminator
+  (`!` or `?`), instead of waiting for the 1s silence fallback on a v1/v2 mismatch.
+- **test:** integration suite port is overridable via `NAPS_EMULATOR_PORT`.
+
 ## v1.1.1 — installable from GitHub
 
 - Added a `prepare` script (`tsup`) so `dist/` builds automatically on a git install

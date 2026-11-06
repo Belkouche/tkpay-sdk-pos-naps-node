@@ -4,6 +4,7 @@ import {
   type PaymentResult,
   type ReferencingResult,
   type ResolvedOptions,
+  type SettlementResult,
   type TestResult,
   type TotalsResult,
 } from "./models.js";
@@ -15,10 +16,12 @@ import {
   buildCancellation,
   buildConfirmation,
   buildMessage,
+  buildSettlement,
   describeResponse,
   extractLastMessage,
   isApproved,
   maskPan,
+  maskPansInText,
   parseMessage,
 } from "./protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport/transport.js";
@@ -67,6 +70,11 @@ export class NapsClient {
     return ns;
   }
 
+  /** NCAI + a fresh sequence for single-frame management operations. */
+  private managementFields(): { ncai: string; ns: string } {
+    return { ncai: this.ncai, ns: this.nextSequence() };
+  }
+
   /** Process a payment (MAD). Two-phase: TM 001 authorization then TM 002 confirmation. */
   async pay(amountMad: number, _orderId?: string): Promise<PaymentResult> {
     const amountCentimes = Math.round(amountMad * 100);
@@ -101,8 +109,15 @@ export class NapsClient {
     });
     try {
       const confResp = await this.transport.sendReceive(confMsg, this.opts.confirmationTimeoutMs);
-      const confCr = parseMessage(confResp)[TAG.CR];
-      const result = mapResult(payFields, true);
+      const confFields = parseMessage(confResp);
+      const confCr = confFields[TAG.CR];
+      // The Phase-2 (TM 102) DP is the customer copy of the receipt.
+      const confDp = confFields[TAG.DP];
+      const result: PaymentResult = {
+        ...mapResult(payFields, true),
+        customerReceiptText: confDp !== undefined ? maskPansInText(confDp) : undefined,
+        customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
+      };
       if (confCr !== "000") return { ...result, responseMessage: `Confirmation failed: CR=${confCr}` };
       return result;
     } catch (e) {
@@ -113,11 +128,14 @@ export class NapsClient {
     }
   }
 
-  /** Cancel/void a payment by STAN. NapsPay v5.4.4 requires the original amount (MAD). */
-  async cancel(stan: string, amountMad?: number): Promise<PaymentResult> {
+  /**
+   * Cancel/void a payment by STAN. NapsPay v5.4.4 requires the original amount (MAD).
+   * @param originalSequence NS of the payment to void, sent as NSA (005).
+   */
+  async cancel(stan: string, amountMad?: number, originalSequence?: string): Promise<PaymentResult> {
     const ns = this.nextSequence();
     const amountCentimes = amountMad !== undefined ? Math.round(amountMad * 100) : undefined;
-    const msg = buildCancellation(stan, { ncai: this.ncai, ns, amountCentimes });
+    const msg = buildCancellation(stan, { ncai: this.ncai, ns, amountCentimes, originalSequence });
     try {
       const resp = await this.transport.sendReceive(msg, this.opts.testTimeoutMs);
       const fields = parseMessage(extractLastMessage(resp));
@@ -139,34 +157,50 @@ export class NapsClient {
   }
 
   async networkTest(): Promise<TestResult> {
-    const resp = await this.transport.sendReceive(buildMessage(TM.NETWORK_TEST), this.opts.testTimeoutMs);
+    const resp = await this.transport.sendReceive(buildMessage(TM.NETWORK_TEST, this.managementFields()), this.opts.testTimeoutMs);
     const cr = parseMessage(resp)[TAG.CR];
     return { isSuccess: cr === "000", responseCode: cr, message: cr === "000" ? "Network OK" : `Network test failed: CR=${cr}` };
   }
 
   /** @param tide "01" merchant (default) or "02" recharge parameter set. */
   async referencing(tide: string = TIDE.MERCHANT): Promise<ReferencingResult> {
-    const msg = buildMessage(TM.REFERENCING, { extraFields: [[TAG.TIDE, tide]] });
+    const msg = buildMessage(TM.REFERENCING, { ...this.managementFields(), extraFields: [[TAG.TIDE, tide]] });
     const resp = await this.transport.sendReceive(msg, this.opts.referencingTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
-    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE], receiptText: fields[TAG.DP] };
+    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE] ?? tide, receiptText: fields[TAG.DP] };
   }
 
   async totals(): Promise<TotalsResult> {
-    const resp = await this.transport.sendReceive(buildMessage(TM.TOTALS), this.opts.testTimeoutMs);
+    const resp = await this.transport.sendReceive(buildMessage(TM.TOTALS, this.managementFields()), this.opts.testTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
     return { isSuccess: cr === "000", responseCode: cr, receiptText: fields[TAG.DP] };
   }
 
   async duplicateReceipt(): Promise<PaymentResult> {
-    const resp = await this.transport.sendReceive(buildMessage(TM.DUPLICATE), 15_000);
-    return mapResult(parseMessage(resp), false);
+    const resp = await this.transport.sendReceive(buildMessage(TM.DUPLICATE, this.managementFields()), 15_000);
+    return mapResult(parseMessage(resp), true);
   }
 
   async resetPinPad(): Promise<void> {
-    await this.transport.sendReceive(buildMessage(TM.RESET_PINPAD), 15_000);
+    await this.transport.sendReceive(buildMessage(TM.RESET_PINPAD, this.managementFields()), 15_000);
+  }
+
+  /**
+   * Settlement / telecollecte (TM 010): uploads the day's batch to the NAPS host.
+   * The terminal must be idle and referenced. CR 052 = already settled today.
+   */
+  async settlement(): Promise<SettlementResult> {
+    const resp = await this.transport.sendReceive(buildSettlement(this.ncai), this.opts.paymentTimeoutMs);
+    const fields = parseMessage(resp);
+    const cr = fields[TAG.CR];
+    if (cr === "000") {
+      return { isSuccess: true, responseCode: cr, message: "Settlement accepted", date: fields[TAG.DA], time: fields[TAG.HE] };
+    }
+    const message =
+      cr === "052" ? "Already settled today" : cr === "909" ? "Terminal or server is down" : `Settlement failed: CR=${cr}`;
+    return { isSuccess: false, responseCode: cr, message };
   }
 
   /** Auto-discover the Ingenico Lane serial port (USB serial only). */
@@ -183,7 +217,10 @@ export class NapsClient {
 function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): PaymentResult {
   const cr = fields[TAG.CR];
   const card = fields[TAG.NCAR];
-  const dp = fields[TAG.DP];
+  const rawDp = fields[TAG.DP];
+  // Display copies of the print block are PAN-masked; lines are parsed from the raw
+  // block because masking inserts '*', the DP line-group separator.
+  const dp = rawDp !== undefined ? maskPansInText(rawDp) : undefined;
   return {
     isSuccess: isApprovedFlag && isApproved(cr),
     isCancelled: cr === "280" || cr === "480",
@@ -201,7 +238,10 @@ function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): Pay
     originalTransactionTime: fields[TAG.HETR],
     cardExpiry: fields[TAG.DAEX],
     receiptText: dp,
-    receiptLines: dp ? parseReceipt(dp) : undefined,
+    receiptLines: rawDp ? parseReceipt(rawDp) : undefined,
     cardholderName: fields[TAG.NPRT],
+    entryMode: fields[TAG.EM],
+    ncai: fields[TAG.NCAI],
+    sequence: fields[TAG.NS],
   };
 }

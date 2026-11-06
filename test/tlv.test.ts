@@ -3,7 +3,10 @@ import {
   tlv,
   buildMessage,
   buildConfirmation,
+  buildCancellation,
+  buildSettlement,
   parseMessage,
+  maskPansInText,
   isApproved,
   maskPan,
   describeResponse,
@@ -12,6 +15,7 @@ import {
   TM,
   TAG,
   TIDE,
+  RECEIPT_TAG,
 } from "../src/protocol/tlv.js";
 
 describe("tlv encoding", () => {
@@ -48,6 +52,11 @@ describe("parseMessage", () => {
     const f = parseMessage("001003109013003000");
     expect(f["001"]).toBe("109");
     expect(f["013"]).toBe("000");
+  });
+
+  it("masks a full PAN in NCAR (007) on parse", () => {
+    const f = parseMessage(tlv("001", "101") + tlv("007", "5167941234563315") + "!");
+    expect(f["007"]).toBe("516794******3315");
   });
 
   it("returns empty for an empty string", () => {
@@ -133,6 +142,33 @@ describe("buildConfirmation", () => {
   });
 });
 
+describe("buildCancellation", () => {
+  it("carries STAN, original amount (MT) and original sequence (NSA)", () => {
+    const f = parseMessage(
+      buildCancellation("703062", { ncai: "0100001", ns: "000007", amountCentimes: 1250, originalSequence: "000003" }),
+    );
+    expect(f["001"]).toBe("003");
+    expect(f["008"]).toBe("703062");
+    expect(f["002"]).toBe("1250");
+    expect(f["005"]).toBe("000003");
+  });
+
+  it("omits NSA when no original sequence is given", () => {
+    expect(parseMessage(buildCancellation("703062"))["005"]).toBeUndefined();
+  });
+});
+
+describe("buildSettlement", () => {
+  it("is TM 010 + NCAI + DA + HE with no sequence number", () => {
+    const f = parseMessage(buildSettlement("0200005"));
+    expect(Object.keys(f)).toEqual(["001", "003", "014", "015"]);
+    expect(f["001"]).toBe("010");
+    expect(f["003"]).toBe("0200005");
+    expect(f["014"]).toMatch(/^\d{8}$/);
+    expect(f["015"]).toMatch(/^\d{6}$/);
+  });
+});
+
 describe("isApproved", () => {
   it("accepts the approval codes", () => {
     for (const c of ["000", "001", "003", "007"]) {
@@ -179,6 +215,15 @@ describe("maskPan", () => {
   });
 });
 
+describe("maskPansInText", () => {
+  it("masks 16-digit card numbers inside free text", () => {
+    expect(maskPansInText("CARTE 5167941234563315 VISA")).toBe("CARTE 516794******3315 VISA");
+  });
+  it("leaves shorter and longer digit runs alone", () => {
+    expect(maskPansInText("STAN 703062 REF 12345678901234567")).toBe("STAN 703062 REF 12345678901234567");
+  });
+});
+
 describe("extractLastMessage", () => {
   it("returns a single message", () => {
     expect(extractLastMessage("001003109!")).toBe("001003109!");
@@ -198,5 +243,16 @@ describe("constants", () => {
     expect(TAG.CB).toBe("011");
     expect(TIDE.MERCHANT).toBe("01");
     expect(TIDE.RECHARGE).toBe("02");
+  });
+
+  it("exposes the v5.4.4 tag set, receipt sub-tags and response message types", () => {
+    expect(TAG.NHC).toBe("006");
+    expect(TAG.TYPA).toBe("021");
+    expect(TAG.MDLC).toBe("028");
+    expect(TAG.EM).toBe("040");
+    expect(RECEIPT_TAG).toEqual({ LINE_NUMBER: "030", FORMAT: "031", ALIGNMENT: "032", CONTENT: "033" });
+    expect(TM.SETTLEMENT).toBe("010");
+    expect(TM.CANCELLATION_RESPONSE).toBe("103");
+    expect(TM.CANCELLATION_CORRECTION).toBe("104");
   });
 });

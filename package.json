@@ -1,6 +1,6 @@
 {
   "name": "@tkpay/naps",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Node.js SDK for NAPS Pay M2M terminals (Sunmi P2/P3 over TCP, Ingenico Lane over USB serial). ASCII TLV protocol, spec v2.0 conformant. Node port of the canonical C# SDK (tkpay-sdk-pos-naps-csharp).",
   "type": "module",
   "repository": {
@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run test/tlv.test.ts test/receipt.test.ts test/client.test.ts",
+    "test:unit": "vitest run test/tlv.test.ts test/receipt.test.ts test/client.test.ts test/transport.test.ts",
     "test:integration": "vitest run test/client.integration.test.ts"
   },
   "optionalDependencies": {
