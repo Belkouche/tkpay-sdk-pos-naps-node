@@ -430,7 +430,7 @@ The [`tkpay-naps-emulator`](https://github.com/Belkouche/tkpay-naps-emulator) is
 (standard library only) program that behaves like a NapsPay terminal over TCP.
 
 ```bash
-python3 /Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py --port 4444
+python3 ../tkpay-naps-emulator/naps_emulator.py --port 4444
 ```
 
 Useful `--mode` values:
@@ -448,8 +448,7 @@ Useful `--mode` values:
 | `void_995` | TM 104 returns CR 995 (pending) |
 | `void_no_confirm` | TM 004 gets no reply (pending) |
 
-`--protocol v1` switches responses to the `?` terminator; `--debug` prints every TLV field. The
-void modes need an emulator version that implements the two-phase void (commit `5cc8536` or later).
+`--protocol v1` switches responses to the `?` terminator; `--debug` prints every TLV field.
 
 **This repo's tests:**
 

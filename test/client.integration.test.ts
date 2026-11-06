@@ -9,7 +9,7 @@ import { NapsClient } from "../src/index.js";
  * The emulator is spawned per-suite; if it is not present on disk, the suite is skipped.
  */
 
-const EMULATOR = process.env.NAPS_EMULATOR ?? "/Users/belkouche/Projects/tkpay/tkpay-naps-emulator/naps_emulator.py";
+const EMULATOR = process.env.NAPS_EMULATOR ?? "../tkpay-naps-emulator/naps_emulator.py";
 const PORT = Number(process.env.NAPS_EMULATOR_PORT ?? 4471);
 const HOST = "127.0.0.1";
 
