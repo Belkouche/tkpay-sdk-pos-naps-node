@@ -50,7 +50,8 @@ TLV spec v2.0). Additive; no breaking changes.
   (`!` or `?`), instead of waiting for the 1s silence fallback on a v1/v2 mismatch.
 - **test:** integration suite emulator path and port are overridable via `NAPS_EMULATOR`
   and `NAPS_EMULATOR_PORT`; new suites cover the two-phase void and the emulator's
-  `decline`, `error` and `confirm_error` modes.
+  `decline`, `error`, `confirm_error`, `void_480`, `void_995`, `void_no_confirm` and
+  `void_refuse` (302, 482) modes (emulator `tkpay-naps-emulator` 5cc8536).
 
 ## v1.1.1 — installable from GitHub
 

@@ -157,3 +157,53 @@ for (const code of ["302", "482"]) {
     });
   });
 }
+
+/** Pay, then void that payment on a fresh connection (TM 003 → 103, TM 004 → 104). */
+async function payThenVoid(client = newClient()) {
+  const pay = await newClient().pay(20);
+  expect(pay.isSuccess).toBe(true);
+  const cancel = await client.cancel(pay.stan!, 20, pay.sequence);
+  return { pay, cancel };
+}
+
+suite("NapsClient ⇄ emulator --mode void_480", () => {
+  useEmulator(["--mode", "void_480"]);
+
+  it("TM 104 CR=480 completes the void", async () => {
+    const { cancel } = await payThenVoid();
+    expect(cancel).toMatchObject({ isSuccess: true, isCancelled: true, responseCode: "480" });
+    expect(cancel.isPending).toBeUndefined();
+  });
+});
+
+for (const mode of ["void_995", "void_no_confirm"]) {
+  suite(`NapsClient ⇄ emulator --mode ${mode}`, () => {
+    useEmulator(["--mode", mode]);
+
+    it("fails closed: pending, keeping the STAN and the TM 103 merchant receipt", async () => {
+      // Short confirmation timeout so void_no_confirm doesn't wait the full 40 s.
+      const c = new NapsClient({ transport: "tcp", tcpHost: HOST, tcpPort: PORT, confirmationTimeoutMs: 3000 });
+      const { pay, cancel } = await payThenVoid(c);
+      expect(cancel).toMatchObject({
+        isSuccess: false,
+        isCancelled: false,
+        isPending: true,
+        stan: pay.stan,
+        responseCode: mode === "void_995" ? "995" : "TIMEOUT",
+      });
+      expect(cancel.receiptLines?.length).toBeGreaterThan(0);
+    });
+  });
+}
+
+for (const code of ["302", "482"]) {
+  suite(`NapsClient ⇄ emulator --mode void_refuse --code ${code}`, () => {
+    useEmulator(["--mode", "void_refuse", "--code", code]);
+
+    it("a refused TM 103 fails the void, not pending", async () => {
+      const { cancel } = await payThenVoid();
+      expect(cancel).toMatchObject({ isSuccess: false, isCancelled: false, responseCode: code });
+      expect(cancel.isPending).toBeUndefined();
+    });
+  });
+}
