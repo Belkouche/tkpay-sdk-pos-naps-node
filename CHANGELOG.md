@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.1 — card number masking
+
+- **fix (card number masking):** card numbers are masked (first 6 + last 4 digits) in
+  `parseMessage`, before anything else sees the reply. NCAR (007) is always returned as
+  first 6 + `*` + last 4 whatever its grouping; inside the DP (010) receipt text every run of
+  13+ digits (adjacent, or separated by one space, dash, dot, tab or non-breaking space) keeps
+  only its first 6 and last 4 digits, separators unchanged (`maskPansInText`). Receipt masking is done value by value so every line keeps its exact
+  content otherwise. The full number is never exposed in a result, receipt, frame sent back
+  to the terminal or error, and the SDK never logs it.
+
 ## v1.2.0 — NapsPay v5.4.4 sync with the canonical C# SDK
 
 Brings the Node port in line with `tkpay-sdk-pos-naps-csharp` v1.5.0 (NapsPay v5.4.4,
@@ -37,13 +47,9 @@ TLV spec v2.0). Additive; no breaking changes.
   and `sequence` from the response.
 - **feat:** full v5.4.4 tag set (NHC 006, TYPA–MDLC 021–028, EM 040), `RECEIPT_TAG`
   sub-tags (030–033), response message types (101…113) in `TM`, and `buildSettlement`.
-- **fix (card number masking):** card numbers are masked (first 6 + last 4 digits) in
-  `parseMessage`, before anything else sees the reply. NCAR (007) is always returned as
-  first 6 + `*` + last 4 whatever its grouping; inside the DP (010) receipt text every run of
-  13+ digits (adjacent, or separated by one space, dash, dot, tab or non-breaking space) keeps
-  only its first 6 and last 4 digits, separators unchanged (`maskPansInText`). Receipt masking is done value by value so every line keeps its exact
-  content otherwise. The full number is never exposed in a result, receipt, frame sent back
-  to the terminal or error, and the SDK never logs it.
+- **fix (PAN masking):** NCAR (007) is masked in `parseMessage`, so the full PAN never leaves the
+  parser; 16-digit PANs are masked in receipt lines and in `receiptText` /
+  `responseMessage`, including the totals and referencing receipts (`maskPansInText`).
 - **fix (receipts):** the DP parser is now length-driven. It used to split the block on `*`,
   which cut the masked-PAN line (`516794******3315`) and returned it blank; any `*` or `?`
   inside a line's text is now kept. Every line is returned in order with its line number,
