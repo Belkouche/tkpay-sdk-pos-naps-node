@@ -72,6 +72,8 @@ describe("NapsClient.pay", () => {
     const res = await client(new FakeTransport([phase1, phase2])).pay(12.5);
 
     expect(res.receiptLines?.[0].text).toBe("MERCHANT");
+    expect(res.merchantReceiptText).toBe(merchantDp);
+    expect(res.merchantReceiptLines?.[0].text).toBe("MERCHANT");
     expect(res.customerReceiptText).toBe(customerDp);
     expect(res.customerReceiptLines?.[0].text).toBe("CUSTOMER");
     expect(res.entryMode).toBe("CC");
@@ -156,6 +158,7 @@ describe("NapsClient.cancel", () => {
 
     expect(res).toMatchObject({ isSuccess: true, isCancelled: true, stan: "900001" });
     expect(res.receiptLines?.[0].text).toBe("MERCHANT");
+    expect(res.merchantReceiptLines?.[0].text).toBe("MERCHANT");
     expect(res.customerReceiptLines?.[0].text).toBe("CUSTOMER");
 
     const [p1, p2] = t.sent.map(parseMessage);
@@ -191,6 +194,8 @@ describe("NapsClient.cancel", () => {
     const res = await client(t).cancel("703062", 12.5);
     expect(res).toMatchObject({ isSuccess: false, isCancelled: false, isPending: true, stan: "703062", responseCode: "TIMEOUT" });
     expect(res.receiptLines?.[0].text).toBe("MERCHANT");
+    expect(res.merchantReceiptLines?.[0].text).toBe("MERCHANT");
+    expect(res.customerReceiptLines).toBeUndefined();
   });
 
   it("treats TM 104 CR=995 as pending, not success and not a hard failure", async () => {
@@ -297,6 +302,21 @@ describe("NapsClient totals / referencing receipt masking", () => {
     const c = client(t);
     expect((await c.totals()).receiptText).toContain("516794******3315");
     expect((await c.referencing()).receiptText).not.toContain("5167941234563315");
+  });
+
+  it("parses the totals and referencing receipts into lines", async () => {
+    const dp = "03000201031001G032001C033006TOTAUX*03000202031001S032001G033007TOTAL 2";
+    const t = new FakeTransport([common("110", "000", tlv(TAG.DP, dp)), common("113", "000", tlv(TAG.DP, dp))]);
+    const c = client(t);
+    expect((await c.totals()).receiptLines?.map((l) => l.text)).toEqual(["TOTAUX", "TOTAL 2"]);
+    expect((await c.referencing()).receiptLines?.[0]).toMatchObject({ text: "TOTAUX", bold: true, alignment: "center" });
+  });
+
+  it("returns a decline receipt as sent, with no merchant/customer copy", async () => {
+    const dp = "03000221031001G032001C033019TRANSACTION REFUSEE";
+    const res = await client(new FakeTransport([common("101", "116", tlv(TAG.DP, dp))])).pay(12.5);
+    expect(res.receiptLines?.[0].text).toBe("TRANSACTION REFUSEE");
+    expect(res.merchantReceiptLines).toBeUndefined();
   });
 });
 

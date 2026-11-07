@@ -8,7 +8,7 @@ import {
   type TestResult,
   type TotalsResult,
 } from "./models.js";
-import { parseReceipt } from "./protocol/receipt.js";
+import { parseReceipt, type ReceiptLine } from "./protocol/receipt.js";
 import {
   TAG,
   TM,
@@ -97,8 +97,10 @@ export class NapsClient {
     const cr = payFields[TAG.CR];
     if (!isApproved(cr)) return mapResult(payFields, false);
 
+    // The TM 101 DP of an approved payment is the merchant copy.
+    const approved = merchantCopy(mapResult(payFields, true));
     const stan = payFields[TAG.STAN];
-    if (!stan) return mapResult(payFields, true); // approved but no STAN → cannot confirm
+    if (!stan) return approved; // approved but no STAN → cannot confirm
 
     // Spec §4.2: echo MT/NCAR/DAEX from the approved payment.
     const confMsg = buildConfirmation(stan, {
@@ -115,7 +117,7 @@ export class NapsClient {
       // The Phase-2 (TM 102) DP is the customer copy of the receipt.
       const confDp = confFields[TAG.DP];
       const result: PaymentResult = {
-        ...mapResult(payFields, true),
+        ...approved,
         customerReceiptText: maskDp(confDp),
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
@@ -132,7 +134,7 @@ export class NapsClient {
       return result;
     } catch (e) {
       if (e instanceof TerminalTimeoutError) {
-        return { ...mapResult(payFields, true), responseMessage: "Confirmation timed out" };
+        return { ...approved, responseMessage: "Confirmation timed out" };
       }
       throw e;
     }
@@ -163,6 +165,9 @@ export class NapsClient {
         return { ...result, isSuccess: done, isCancelled: done || result.isCancelled };
       }
 
+      // The TM 103 DP is the merchant copy of the void; kept on every outcome below.
+      const found = merchantCopy(result);
+
       // Phase 2: Cancellation Confirmation (TM 004 → 104) executes the reversal.
       const confMsg = buildCancellationConfirmation(fields[TAG.STAN] ?? stan, {
         ncai: this.ncai,
@@ -183,7 +188,7 @@ export class NapsClient {
       // terminals) means the outcome is unknown — pending, never success.
       if (confCr === undefined || confCr === "995") {
         return {
-          ...result,
+          ...found,
           isSuccess: false,
           isCancelled: false,
           isPending: true,
@@ -193,7 +198,7 @@ export class NapsClient {
       }
       if (confCr !== "000" && confCr !== "480") {
         return {
-          ...result,
+          ...found,
           isSuccess: false,
           isCancelled: false,
           responseCode: confCr,
@@ -202,11 +207,11 @@ export class NapsClient {
       }
       const confDp = confFields?.[TAG.DP];
       return {
-        ...result,
+        ...found,
         isSuccess: true,
         isCancelled: true,
         responseCode: confCr,
-        stan: confFields?.[TAG.STAN] ?? result.stan,
+        stan: confFields?.[TAG.STAN] ?? found.stan,
         customerReceiptText: maskDp(confDp),
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
@@ -230,14 +235,14 @@ export class NapsClient {
     const resp = await this.transport.sendReceive(msg, this.opts.referencingTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
-    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE] ?? tide, receiptText: maskDp(fields[TAG.DP]) };
+    return { isSuccess: cr === "000", responseCode: cr, parameterSet: fields[TAG.TIDE] ?? tide, ...receipt(fields) };
   }
 
   async totals(): Promise<TotalsResult> {
     const resp = await this.transport.sendReceive(buildMessage(TM.TOTALS, this.managementFields()), this.opts.testTimeoutMs);
     const fields = parseMessage(resp);
     const cr = fields[TAG.CR];
-    return { isSuccess: cr === "000", responseCode: cr, receiptText: maskDp(fields[TAG.DP]) };
+    return { isSuccess: cr === "000", responseCode: cr, ...receipt(fields) };
   }
 
   /** @param stan STAN of a payment from the current business day; omit for the last one (v2 §4.6). */
@@ -277,6 +282,16 @@ export class NapsClient {
   static listPorts(): Promise<PortInfo[]> {
     return listPorts();
   }
+}
+
+function merchantCopy(r: PaymentResult): PaymentResult {
+  return { ...r, merchantReceiptText: r.receiptText, merchantReceiptLines: r.receiptLines };
+}
+
+/** The DP block of a response as display text (PAN-masked) and parsed lines. */
+function receipt(fields: Record<string, string>): { receiptText?: string; receiptLines?: ReceiptLine[] } {
+  const dp = fields[TAG.DP];
+  return { receiptText: maskDp(dp), receiptLines: dp ? parseReceipt(dp) : undefined };
 }
 
 function maskDp(dp: string | undefined): string | undefined {

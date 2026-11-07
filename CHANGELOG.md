@@ -40,6 +40,14 @@ TLV spec v2.0). Additive; no breaking changes.
 - **fix (PCI):** NCAR (007) is masked in `parseMessage`, so the full PAN never leaves the
   parser; 16-digit PANs are masked in receipt lines and in `receiptText` /
   `responseMessage`, including the totals and referencing receipts (`maskPansInText`).
+- **fix (receipts):** the DP parser is now length-driven. It used to split the block on `*`,
+  which cut the masked-PAN line (`516794******3315`) and returned it blank; any `*` or `?`
+  inside a line's text is now kept. Every line is returned in order with its line number,
+  bold and alignment; nothing is added, merged or dropped.
+- **feat (receipts):** `merchantReceiptText` / `merchantReceiptLines` (TM 101 on payments,
+  TM 103 on voids, kept on pending voids) alongside `customerReceiptText` /
+  `customerReceiptLines` (TM 102 / TM 104); `totals()` and `referencing()` also return
+  parsed `receiptLines`. Golden tests check the emulator's merchant and customer copies.
 - **fix:** management operations (network test, referencing, totals, duplicate, reset)
   now send the client's NCAI and a fresh sequence instead of the hard-coded
   `0100001` / `000001`.

@@ -88,9 +88,13 @@ export interface PaymentResult {
   originalTransactionTime?: string;
   /** DAEX (017) — card expiry (YYMM). */
   cardExpiry?: string;
+  /** DP (010) of the first response, as sent: the merchant copy on payments/voids, the decline or duplicate receipt otherwise. */
   receiptText?: string;
   receiptLines?: ReceiptLine[];
-  /** Phase-2 (TM 102) DP — customer copy of the receipt; Phase-1 DP is the merchant copy. */
+  /** Merchant copy ("Copie Commercant"): DP of TM 101 (payment) or TM 103 (void). */
+  merchantReceiptText?: string;
+  merchantReceiptLines?: ReceiptLine[];
+  /** Customer copy ("Copie Client"): DP of TM 102 (payment) or TM 104 (void). */
   customerReceiptText?: string;
   customerReceiptLines?: ReceiptLine[];
   cardholderName?: string;
@@ -119,6 +123,7 @@ export interface ReferencingResult {
   /** TIDE (020) echoed by the terminal: which parameter set was loaded. */
   parameterSet?: string;
   receiptText?: string;
+  receiptLines?: ReceiptLine[];
 }
 
 export interface SettlementResult {
@@ -136,4 +141,5 @@ export interface TotalsResult {
   isSuccess: boolean;
   responseCode?: string;
   receiptText?: string;
+  receiptLines?: ReceiptLine[];
 }

@@ -10,7 +10,7 @@ const naps = new NapsClient({
 const result = await naps.pay(12.5); // 12.50 MAD
 if (result.isSuccess) {
   console.log(`Approved — STAN ${result.stan}, card ${result.cardNumber}`);
-  console.log(receiptToText(result.receiptLines ?? []));
+  console.log(receiptToText(result.customerReceiptLines ?? [])); // customer copy
 } else {
   console.log(`Declined — ${result.responseCode}: ${result.responseMessage}`);
 }

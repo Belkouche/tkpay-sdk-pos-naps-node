@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import { existsSync } from "node:fs";
-import { NapsClient } from "../src/index.js";
+import { NapsClient, receiptToText, type ReceiptLine } from "../src/index.js";
 
 /**
  * Integration tests against the Python NAPS terminal emulator (tkpay-naps-emulator).
@@ -125,6 +125,46 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     const t0 = Date.now();
     await newClient().networkTest();
     expect(Date.now() - t0).toBeLessThan(800); // would be >1000ms if it hit the drain fallback
+  });
+});
+
+/** Render a receipt, trim each line, and replace the per-transaction values with placeholders. */
+function normalized(lines: ReceiptLine[] | undefined): string[] {
+  return receiptToText(lines ?? [])
+    .split("\n")
+    .map((l) => l.trim())
+    .map((l) =>
+      l
+        .replace(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/, "<DATE>")
+        .replace(/^(Transaction|Autorisation|STAN): \d+$/, "$1: <N>"),
+    );
+}
+
+function goldenReceipt(amount: string, ...tail: string[]): string[] {
+  const sep = "--------------------------------";
+  return [
+    "TKpay", sep, "<DATE>", "TKPAY DEMO", "CASABLANCA", sep, "VISA", "516794******3315",
+    "Terminal: 00000001", "Transaction: <N>", "Autorisation: <N>", "STAN: <N>", sep,
+    `MONTANT: ${amount} MAD`, sep, ...tail,
+  ];
+}
+
+suite("NapsClient ⇄ emulator receipts (golden)", () => {
+  useEmulator();
+
+  it("payment: merchant copy (TM 101) and customer copy (TM 102)", async () => {
+    const res = await newClient().pay(10);
+    expect(res.isSuccess).toBe(true);
+    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "DEBIT", "Copie Commercant"));
+    expect(normalized(res.customerReceiptLines)).toEqual(goldenReceipt("10.00", "DEBIT", "Copie Client"));
+  });
+
+  it("void: merchant copy (TM 103) and customer copy (TM 104)", async () => {
+    const pay = await newClient().pay(10);
+    const res = await newClient().cancel(pay.stan!, 10, pay.sequence);
+    expect(res.isSuccess).toBe(true);
+    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "ANNULATION", "Copie Commercant"));
+    expect(normalized(res.customerReceiptLines)).toEqual(goldenReceipt("10.00", "ANNULATION", "Copie Client"));
   });
 });
 

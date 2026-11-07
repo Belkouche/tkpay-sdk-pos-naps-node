@@ -79,7 +79,7 @@ const naps = new NapsClient({
 const result = await naps.pay(12.5); // 12.50 MAD
 if (result.isSuccess) {
   console.log(`Approved — STAN ${result.stan}, card ${result.cardNumber}`);
-  console.log(receiptToText(result.receiptLines ?? []));
+  console.log(receiptToText(result.customerReceiptLines ?? [])); // customer copy
 } else {
   console.log(`Declined — ${result.responseCode}: ${result.responseMessage}`);
 }
@@ -94,11 +94,16 @@ Approved — STAN 791883, card 516794******3315
                  TKpay
 --------------------------------
 06/11/2026 23:39:13
+TKPAY DEMO
+CASABLANCA
+--------------------------------
+VISA
+516794******3315
 ...
 MONTANT: 12.50 MAD
 --------------------------------
 DEBIT
-Copie Commercant
+Copie Client
 ```
 
 Amounts are in MAD: `pay(12.5)` sends 1250 centimes. The register and cashier ids default to
@@ -151,7 +156,7 @@ r.entryMode;            // EM (040), e.g. "CC" contactless
 r.authorizationNumber;  // NA (009)
 r.transactionDate;      // DA (014), DDMMYYYY
 r.transactionTime;      // HE (015), HHMMSS
-r.receiptLines;         // merchant copy (TM 101), parsed
+r.merchantReceiptLines; // merchant copy (TM 101), parsed — see §6
 r.customerReceiptLines; // customer copy (TM 102), parsed
 naps.disconnect();
 ```
@@ -209,8 +214,9 @@ if (voided.isSuccess) {
 naps.disconnect();
 ```
 
-On a success, `voided.receiptLines` is the merchant copy (TM 103) and
+On a success, `voided.merchantReceiptLines` is the merchant copy (TM 103) and
 `voided.customerReceiptLines` the customer copy (TM 104; the terminal sends no receipt with CR 480).
+A pending or refused void keeps the TM 103 merchant copy.
 `originalSequence`, when given, is sent as NSA (005) on TM 003 only. A timeout on TM 003 itself
 returns `responseCode: "TIMEOUT"`.
 
@@ -245,10 +251,10 @@ naps.disconnect();
 **Totals** (TM 010) — the running totals ticket:
 
 ```ts
-import { NapsClient, parseReceipt, receiptToText } from "@tkpay/naps";
+import { NapsClient, receiptToText } from "@tkpay/naps";
 const naps = new NapsClient({ tcpHost: "127.0.0.1" });
-const totals = await naps.totals(); // { isSuccess, responseCode, receiptText }
-console.log(receiptToText(parseReceipt(totals.receiptText ?? "")));
+const totals = await naps.totals(); // { isSuccess, responseCode, receiptText, receiptLines }
+console.log(receiptToText(totals.receiptLines ?? []));
 naps.disconnect();
 ```
 
@@ -268,7 +274,7 @@ naps.disconnect();
 ```ts
 import { NapsClient, TIDE } from "@tkpay/naps";
 const naps = new NapsClient({ tcpHost: "127.0.0.1" });
-const ref = await naps.referencing(TIDE.MERCHANT); // { isSuccess, responseCode, parameterSet, receiptText }
+const ref = await naps.referencing(TIDE.MERCHANT); // { isSuccess, responseCode, parameterSet, receiptText, receiptLines }
 console.log(ref.parameterSet, ref.isSuccess);
 naps.disconnect();
 ```
@@ -295,22 +301,72 @@ console.log(ports, ingenico);
 
 ## 6. Receipts, PAN masking, response codes
 
-**Receipts.** The terminal sends receipts in the DP (010) field: line groups separated by `*`,
-each made of sub-tags 030 (line number), 031 (format: `S` simple, `G` bold), 032 (alignment: `C`
-centre, `D` right, `G` left) and 033 (text). The SDK parses them into `ReceiptLine` objects:
+### Receipts
+
+The receipt is the DP (010) block the terminal sends — a certified layout. The SDK prints it as
+sent: it parses every line, keeps them in order and adds, merges or drops nothing.
+
+**Which copy comes from where**
+
+| Operation | Merchant copy ("Copie Commercant") | Customer copy ("Copie Client") |
+|---|---|---|
+| `pay()` approved | `merchantReceiptLines` ← TM 101 | `customerReceiptLines` ← TM 102 |
+| `cancel()` completed | `merchantReceiptLines` ← TM 103 | `customerReceiptLines` ← TM 104 (none with CR 480) |
+| `cancel()` pending or refused at TM 104 | `merchantReceiptLines` ← TM 103 | — |
+
+Everything else returns the receipt as sent in `receiptLines`: declines (TM 101), `duplicateReceipt()`
+(TM 108), `totals()` (TM 110) and `referencing()` (TM 113). On payments and voids `receiptLines` is
+the same as `merchantReceiptLines`. Each `…Lines` field has a `…Text` sibling holding the raw DP
+block (PAN-masked).
+
+**Printing.** Each `ReceiptLine` carries `lineNumber` (DP1, sub-tag 030), `bold` (DP2/031: `G` =
+bold, `S` = simple), `alignment` (DP3/032: `C` → `"center"`, `D` → `"right"`, `G` → `"left"`) and
+`text` (DP4/033). Drive a printer from those, or use `receiptToText(lines, width = 40)` for plain
+text with centred / right-aligned lines:
 
 ```ts
-import { parseReceipt, receiptToText, type ReceiptLine } from "@tkpay/naps";
+import { NapsClient, receiptToText, type ReceiptLine } from "@tkpay/naps";
 
-function print(lines: ReceiptLine[]): void {
-  for (const line of lines) console.log(line.lineNumber, line.bold, line.alignment, line.text);
-  console.log(receiptToText(lines, 40)); // plain text, centred/right-aligned to 40 columns
+function printLines(lines: ReceiptLine[] = []): void {
+  for (const l of lines) console.log(l.lineNumber, l.bold ? "bold" : "    ", l.alignment.padEnd(6), l.text);
 }
-print(parseReceipt("03000201031001G032001C033005TKpay"));
+
+const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const r = await naps.pay(10);
+console.log(receiptToText(r.merchantReceiptLines ?? [])); // hand to the merchant
+console.log(receiptToText(r.customerReceiptLines ?? [])); // hand to the customer
+printLines(r.customerReceiptLines);                        // with formatting metadata
+naps.disconnect();
 ```
 
-`receiptText` / `customerReceiptText` hold the raw DP block; `receiptLines` /
-`customerReceiptLines` the parsed lines.
+A 10.00 MAD payment on the emulator renders the customer copy as (each line trimmed):
+
+```
+TKpay
+--------------------------------
+07/11/2026 00:13:51
+TKPAY DEMO
+CASABLANCA
+--------------------------------
+VISA
+516794******3315
+Terminal: 00000001
+Transaction: 650759
+Autorisation: 223927
+STAN: 650759
+--------------------------------
+MONTANT: 10.00 MAD
+--------------------------------
+DEBIT
+Copie Client
+```
+
+The merchant copy ends with `Copie Commercant`; void copies end with `ANNULATION` and then the copy
+label. `parseReceipt(dp)` parses any DP block yourself.
+
+How the block is parsed: line groups are separated by `*`, each made of sub-tags 030–033, and `?`
+ends the block. Values are read by their TLV length, so a `*` or `?` inside a line's text (such as
+the masked PAN `516794******3315`) stays part of that line.
 
 **PAN masking.** The full card number never reaches your code: the NCAR (007) field is masked on
 parse (first 6 + last 4 digits, e.g. `516794******3315`), and any 16-digit number inside receipt
