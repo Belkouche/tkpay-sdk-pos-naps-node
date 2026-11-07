@@ -367,13 +367,20 @@ export function maskPan(pan: string): string {
   return pan.slice(0, 6) + "*".repeat(pan.length - 10) + pan.slice(-4);
 }
 
-/** A 13–19 digit card number, digits optionally separated by single spaces or dashes. */
-const PAN_IN_TEXT = /(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)/g;
+/** Characters allowed (one at a time) between the digits of a card-shaped run. */
+const PAN_SEPARATOR = "[ \\-.\\t\\u00A0]";
 
 /**
- * Mask card numbers found in free text (e.g. receipt lines): 13–19 digits, with or without
- * spaces or dashes. Keeps the first 6 and last 4 digits and every separator, so the text
- * keeps its length and layout ("5167 9400 0012 3315" → "5167 94** **** 3315").
+ * A card-shaped run: 13 or more digits, consecutive digits adjacent or separated by exactly
+ * one space, dash, dot, tab or non-breaking space. No upper bound — longer runs are masked
+ * too (fail closed). Slashes and colons are not separators, so dates and times never match.
+ */
+const PAN_IN_TEXT = new RegExp(`(?<!\\d)\\d(?:${PAN_SEPARATOR}?\\d){12,}`, "g");
+
+/**
+ * Mask card-shaped runs in free text (e.g. receipt lines): every digit except the first 6
+ * and last 4 of the run becomes '*'. Separators are kept, so the text keeps its length and
+ * layout ("5167 9400 0012 3315" → "5167 94** **** 3315").
  */
 export function maskPansInText(text: string): string {
   return text.replace(PAN_IN_TEXT, (match) => {
@@ -383,10 +390,9 @@ export function maskPansInText(text: string): string {
   });
 }
 
-/** NCAR (007): mask a card number written with separators too; idempotent on masked values. */
+/** NCAR (007): always first 6 + '*' + last 4, whatever grouping it arrived in; idempotent. */
 function maskCardField(value: string): string {
-  const masked = maskPansInText(value);
-  return masked !== value ? masked : maskPan(value);
+  return maskPan(value.replace(new RegExp(PAN_SEPARATOR, "g"), ""));
 }
 
 /**

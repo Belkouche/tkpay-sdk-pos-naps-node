@@ -60,6 +60,13 @@ describe("parseMessage", () => {
     expect(f["007"]).toBe("516794******3315");
   });
 
+  it.each(["5167941234563315", "5167 9412 3456 3315", "5167-9412-3456-3315", "516794******3315", "5167 94** **** 3315"])(
+    "returns NCAR (007) %j as first 6 + '*' + last 4",
+    (ncar) => {
+      expect(parseMessage(tlv("001", "101") + tlv("007", ncar) + "!")["007"]).toBe("516794******3315");
+    },
+  );
+
   it("returns empty for an empty string", () => {
     expect(parseMessage("")).toEqual({});
   });
@@ -239,21 +246,38 @@ describe("maskPansInText", () => {
   it("masks 16-digit card numbers inside free text", () => {
     expect(maskPansInText("CARTE 5167941234563315 VISA")).toBe("CARTE 516794******3315 VISA");
   });
-  it("leaves digit runs shorter than 13 or longer than 19 alone", () => {
-    const text = "STAN 703062 REF 123456789012 ID 12345678901234567890";
-    expect(maskPansInText(text)).toBe(text);
+  // Shared masking rule — identical vectors across the 7 NAPS SDKs.
+  it.each([
+    ["5167940000123315", "516794******3315"],
+    ["5167 9400 0012 3315", "5167 94** **** 3315"],
+    ["5167-9400-0012-3315", "5167-94**-****-3315"],
+    ["5167.9400.0012.3315", "5167.94**.****.3315"],
+    ["6011000990139424127", "601100*********4127"],
+    ["5167 9400 0012 3315 0000", "5167 94** **** **** 0000"],
+    ["07/11/2026 00:12:10", "07/11/2026 00:12:10"],
+    ["MONTANT: 10.00 MAD", "MONTANT: 10.00 MAD"],
+    ["Terminal: 00000001", "Terminal: 00000001"],
+  ])("maskPansInText(%j) → %j", (input, expected) => {
+    expect(maskPansInText(input)).toBe(expected);
   });
 
-  it("masks 13–19 digit card numbers, with spaces or dashes, keeping length and separators", () => {
+  it("masks runs of 13+ digits with tab or non-breaking-space separators, and runs over 19 digits", () => {
     expect(maskPansInText("4111111111111")).toBe("411111***1111"); // 13 digits
-    expect(maskPansInText("6200000000000000005")).toBe("620000*********0005"); // 19 digits
-    expect(maskPansInText("CARTE 5167 9400 0012 3315 OK")).toBe("CARTE 5167 94** **** 3315 OK");
-    expect(maskPansInText("5167-9400-0012-3315")).toBe("5167-94**-****-3315");
+    expect(maskPansInText("5167\t9400\t0012\t3315")).toBe("5167\t94**\t****\t3315");
+    expect(maskPansInText("5167\u00A09400\u00A00012\u00A03315")).toBe("5167\u00A094**\u00A0****\u00A03315");
+    expect(maskPansInText("12345678901234567890")).toBe("123456**********7890"); // 20 digits: fail closed
   });
 
-  it("does not touch dates, times or amounts", () => {
-    const text = "07/11/2026 00:11:31 MONTANT: 10.00 MAD";
-    expect(maskPansInText(text)).toBe(text);
+  it("leaves shorter runs, double separators, amounts and receipt numbers alone", () => {
+    for (const text of [
+      "STAN 703062 REF 123456789012", // 12 digits
+      "5167  9400  0012  3315", // two separators between groups: no run of 13
+      "MONTANT: 1 250,00 MAD",
+      "Transaction: 653394",
+      "Autorisation: 379900",
+    ]) {
+      expect(maskPansInText(text)).toBe(text);
+    }
   });
 });
 

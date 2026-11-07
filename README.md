@@ -369,9 +369,12 @@ ends the block. Values are read by their TLV length, so a `*` or `?` inside a li
 the masked PAN `516794******3315`) stays part of that line.
 
 **Card numbers are masked.** The SDK masks card numbers as soon as it parses the terminal's reply
-— first 6 + last 4 digits, e.g. `516794******3315` — in the card field (NCAR, 007) and anywhere in
-the receipt text (13 to 19 digits, with or without spaces or dashes: `5167 9400 0012 3315` becomes
-`5167 94** **** 3315`). Masking keeps the rest of each receipt line exactly as sent. The full number
+— first 6 + last 4 digits. The card field (NCAR, 007) is always returned as `516794******3315`,
+whatever grouping it arrived in. In receipt text, any run of 13 or more digits — adjacent, or
+separated by single spaces, dashes, dots, tabs or non-breaking spaces — keeps only its first 6 and
+last 4 digits, with the separators left in place: `5167 9400 0012 3315` becomes
+`5167 94** **** 3315`. Dates, times, amounts and shorter numbers (STAN, terminal, authorisation) are
+left as they are, and the rest of each receipt line stays exactly as sent. The full number
 is never exposed in a result, a receipt, a frame sent back to the terminal or an error, and the SDK
 never logs it. The helpers are exported as `maskPan` and `maskPansInText`.
 
