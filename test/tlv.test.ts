@@ -239,8 +239,21 @@ describe("maskPansInText", () => {
   it("masks 16-digit card numbers inside free text", () => {
     expect(maskPansInText("CARTE 5167941234563315 VISA")).toBe("CARTE 516794******3315 VISA");
   });
-  it("leaves shorter and longer digit runs alone", () => {
-    expect(maskPansInText("STAN 703062 REF 12345678901234567")).toBe("STAN 703062 REF 12345678901234567");
+  it("leaves digit runs shorter than 13 or longer than 19 alone", () => {
+    const text = "STAN 703062 REF 123456789012 ID 12345678901234567890";
+    expect(maskPansInText(text)).toBe(text);
+  });
+
+  it("masks 13–19 digit card numbers, with spaces or dashes, keeping length and separators", () => {
+    expect(maskPansInText("4111111111111")).toBe("411111***1111"); // 13 digits
+    expect(maskPansInText("6200000000000000005")).toBe("620000*********0005"); // 19 digits
+    expect(maskPansInText("CARTE 5167 9400 0012 3315 OK")).toBe("CARTE 5167 94** **** 3315 OK");
+    expect(maskPansInText("5167-9400-0012-3315")).toBe("5167-94**-****-3315");
+  });
+
+  it("does not touch dates, times or amounts", () => {
+    const text = "07/11/2026 00:11:31 MONTANT: 10.00 MAD";
+    expect(maskPansInText(text)).toBe(text);
   });
 });
 

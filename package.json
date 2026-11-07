@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run test/tlv.test.ts test/receipt.test.ts test/client.test.ts test/transport.test.ts",
+    "test:unit": "vitest run test/tlv.test.ts test/receipt.test.ts test/client.test.ts test/transport.test.ts test/pan.test.ts",
     "test:integration": "vitest run test/client.integration.test.ts"
   },
   "optionalDependencies": {

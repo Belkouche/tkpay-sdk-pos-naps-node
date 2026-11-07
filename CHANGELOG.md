@@ -37,9 +37,12 @@ TLV spec v2.0). Additive; no breaking changes.
   and `sequence` from the response.
 - **feat:** full v5.4.4 tag set (NHC 006, TYPA–MDLC 021–028, EM 040), `RECEIPT_TAG`
   sub-tags (030–033), response message types (101…113) in `TM`, and `buildSettlement`.
-- **fix (PAN masking):** NCAR (007) is masked in `parseMessage`, so the full PAN never leaves the
-  parser; 16-digit PANs are masked in receipt lines and in `receiptText` /
-  `responseMessage`, including the totals and referencing receipts (`maskPansInText`).
+- **fix (card number masking):** card numbers are masked (first 6 + last 4 digits) in
+  `parseMessage`, before anything else sees the reply: in NCAR (007) and inside the DP (010)
+  receipt text, for 13–19 digit numbers with or without spaces or dashes
+  (`maskPansInText`). Receipt masking is done value by value so every line keeps its exact
+  content otherwise. The full number is never exposed in a result, receipt, frame sent back
+  to the terminal or error, and the SDK never logs it.
 - **fix (receipts):** the DP parser is now length-driven. It used to split the block on `*`,
   which cut the masked-PAN line (`516794******3315`) and returned it blank; any `*` or `?`
   inside a line's text is now kept. Every line is returned in order with its line number,

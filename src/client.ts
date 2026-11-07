@@ -22,7 +22,6 @@ import {
   extractLastMessage,
   isApproved,
   maskPan,
-  maskPansInText,
   parseMessage,
 } from "./protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport/transport.js";
@@ -118,7 +117,7 @@ export class NapsClient {
       const confDp = confFields[TAG.DP];
       const result: PaymentResult = {
         ...approved,
-        customerReceiptText: maskDp(confDp),
+        customerReceiptText: confDp,
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
       // The terminal can refuse the confirmation (302 = sale not found, 482 = already
@@ -212,7 +211,7 @@ export class NapsClient {
         isCancelled: true,
         responseCode: confCr,
         stan: confFields?.[TAG.STAN] ?? found.stan,
-        customerReceiptText: maskDp(confDp),
+        customerReceiptText: confDp,
         customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
     } catch (e) {
@@ -288,23 +287,16 @@ function merchantCopy(r: PaymentResult): PaymentResult {
   return { ...r, merchantReceiptText: r.receiptText, merchantReceiptLines: r.receiptLines };
 }
 
-/** The DP block of a response as display text (PAN-masked) and parsed lines. */
+/** The DP block of a response (card numbers already masked by parseMessage) and its parsed lines. */
 function receipt(fields: Record<string, string>): { receiptText?: string; receiptLines?: ReceiptLine[] } {
   const dp = fields[TAG.DP];
-  return { receiptText: maskDp(dp), receiptLines: dp ? parseReceipt(dp) : undefined };
-}
-
-function maskDp(dp: string | undefined): string | undefined {
-  return dp !== undefined ? maskPansInText(dp) : undefined;
+  return { receiptText: dp, receiptLines: dp ? parseReceipt(dp) : undefined };
 }
 
 function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): PaymentResult {
   const cr = fields[TAG.CR];
   const card = fields[TAG.NCAR];
-  const rawDp = fields[TAG.DP];
-  // Display copies of the print block are PAN-masked; lines are parsed from the raw
-  // block because masking inserts '*', the DP line-group separator.
-  const dp = maskDp(rawDp);
+  const dp = fields[TAG.DP]; // card numbers already masked by parseMessage
   return {
     isSuccess: isApprovedFlag && isApproved(cr),
     isCancelled: cr === "280" || cr === "480",
@@ -322,7 +314,7 @@ function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): Pay
     originalTransactionTime: fields[TAG.HETR],
     cardExpiry: fields[TAG.DAEX],
     receiptText: dp,
-    receiptLines: rawDp ? parseReceipt(rawDp) : undefined,
+    receiptLines: dp ? parseReceipt(dp) : undefined,
     cardholderName: fields[TAG.NPRT],
     entryMode: fields[TAG.EM],
     ncai: fields[TAG.NCAI],

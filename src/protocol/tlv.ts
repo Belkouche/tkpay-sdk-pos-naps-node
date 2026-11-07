@@ -328,8 +328,9 @@ export function buildSettlement(ncai = "0100001"): string {
 
 /**
  * Parse a TLV string → { tag: value }. Stops at the first terminator ('!' v2, '?' v1)
- * so trailing receipt/noise after it is ignored. The PAN in NCAR (007) is masked on
- * parse so the full card number never leaves this function.
+ * so trailing receipt/noise after it is ignored. Card numbers are masked here (first 6 +
+ * last 4 digits) — in NCAR (007) and inside the DP (010) receipt text — so the full
+ * number never leaves this function.
  */
 export function parseMessage(raw: string): Record<string, string> {
   let data = raw;
@@ -346,7 +347,7 @@ export function parseMessage(raw: string): Record<string, string> {
     if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || Number.isNaN(len)) break;
     if (pos + 6 + len > data.length) break;
     const value = data.slice(pos + 6, pos + 6 + len);
-    fields[tag] = tag === TAG.NCAR ? maskPan(value) : value;
+    fields[tag] = tag === TAG.NCAR ? maskCardField(value) : tag === TAG.DP ? maskReceiptBlock(value) : value;
     pos += 6 + len;
   }
   return fields;
@@ -366,9 +367,53 @@ export function maskPan(pan: string): string {
   return pan.slice(0, 6) + "*".repeat(pan.length - 10) + pan.slice(-4);
 }
 
-/** Mask any 16-digit card numbers found in free text (e.g. receipt lines). */
+/** A 13–19 digit card number, digits optionally separated by single spaces or dashes. */
+const PAN_IN_TEXT = /(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)/g;
+
+/**
+ * Mask card numbers found in free text (e.g. receipt lines): 13–19 digits, with or without
+ * spaces or dashes. Keeps the first 6 and last 4 digits and every separator, so the text
+ * keeps its length and layout ("5167 9400 0012 3315" → "5167 94** **** 3315").
+ */
 export function maskPansInText(text: string): string {
-  return text.replace(/\b\d{16}\b/g, maskPan);
+  return text.replace(PAN_IN_TEXT, (match) => {
+    const digits = match.replace(/\D/g, "").length;
+    let seen = 0;
+    return match.replace(/\d/g, (d) => (++seen <= 6 || seen > digits - 4 ? d : "*"));
+  });
+}
+
+/** NCAR (007): mask a card number written with separators too; idempotent on masked values. */
+function maskCardField(value: string): string {
+  const masked = maskPansInText(value);
+  return masked !== value ? masked : maskPan(value);
+}
+
+/**
+ * Mask card numbers inside each sub-tag value of a DP (010) receipt block. Masking keeps
+ * each value's length, so the TLV length headers stay valid and every line keeps its exact
+ * content otherwise; the digit runs of the headers themselves are never touched.
+ */
+function maskReceiptBlock(dp: string): string {
+  let out = "";
+  let i = 0;
+  while (i < dp.length) {
+    const ch = dp[i];
+    if (ch === "*") {
+      out += ch;
+      i++;
+      continue;
+    }
+    const header = dp.slice(i, i + 6);
+    const len = Number(header.slice(3));
+    if (ch === "?" || !/^\d{6}$/.test(header) || i + 6 + len > dp.length) {
+      // End marker or unparseable remainder: no line structure left to preserve.
+      return out + maskPansInText(dp.slice(i));
+    }
+    out += header + maskPansInText(dp.slice(i + 6, i + 6 + len));
+    i += 6 + len;
+  }
+  return out;
 }
 
 /** Return the last '!'/'?'-terminated message from a raw stream. */

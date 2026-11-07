@@ -303,7 +303,7 @@ console.log(ports, ingenico);
 
 ### Receipts
 
-The receipt is the DP (010) block the terminal sends — a certified layout. The SDK prints it as
+The receipt is the DP (010) block the terminal sends. The SDK prints it as
 sent: it parses every line, keeps them in order and adds, merges or drops nothing.
 
 **Which copy comes from where**
@@ -317,7 +317,7 @@ sent: it parses every line, keeps them in order and adds, merges or drops nothin
 Everything else returns the receipt as sent in `receiptLines`: declines (TM 101), `duplicateReceipt()`
 (TM 108), `totals()` (TM 110) and `referencing()` (TM 113). On payments and voids `receiptLines` is
 the same as `merchantReceiptLines`. Each `…Lines` field has a `…Text` sibling holding the raw DP
-block (PAN-masked).
+block (card numbers masked).
 
 **Printing.** Each `ReceiptLine` carries `lineNumber` (DP1, sub-tag 030), `bold` (DP2/031: `G` =
 bold, `S` = simple), `alignment` (DP3/032: `C` → `"center"`, `D` → `"right"`, `G` → `"left"`) and
@@ -368,9 +368,12 @@ How the block is parsed: line groups are separated by `*`, each made of sub-tags
 ends the block. Values are read by their TLV length, so a `*` or `?` inside a line's text (such as
 the masked PAN `516794******3315`) stays part of that line.
 
-**PAN masking.** The full card number never reaches your code: the NCAR (007) field is masked on
-parse (first 6 + last 4 digits, e.g. `516794******3315`), and any 16-digit number inside receipt
-text is masked the same way. The helpers are exported as `maskPan` and `maskPansInText`.
+**Card numbers are masked.** The SDK masks card numbers as soon as it parses the terminal's reply
+— first 6 + last 4 digits, e.g. `516794******3315` — in the card field (NCAR, 007) and anywhere in
+the receipt text (13 to 19 digits, with or without spaces or dashes: `5167 9400 0012 3315` becomes
+`5167 94** **** 3315`). Masking keeps the rest of each receipt line exactly as sent. The full number
+is never exposed in a result, a receipt, a frame sent back to the terminal or an error, and the SDK
+never logs it. The helpers are exported as `maskPan` and `maskPansInText`.
 
 **Response codes.** CR (013) is a 3-digit code. `000`, `001`, `003` and `007` are approvals for a
 payment. The full table from spec §6 is exported as `RESPONSE_CODES`:

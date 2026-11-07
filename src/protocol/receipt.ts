@@ -9,7 +9,7 @@
  * Parsing is length-driven: each sub-tag's value is consumed by its LENGTH, so a '*' or
  * '?' inside a value (e.g. the masked PAN "516794******3315") stays part of the line.
  * '*' and '?' only act as separator / end marker between sub-tags. Every line is kept,
- * in order, exactly as sent; any full 16-digit PAN in a line is masked.
+ * in order, exactly as sent; any card number in a line is masked (first 6 + last 4 digits).
  */
 
 import { RECEIPT_TAG, maskPansInText } from "./tlv.js";
