@@ -52,6 +52,9 @@ after the port opens, so the first request of a session always answered at 30.1 
   (Sunmi, whose lengths count characters) is unchanged.
 - **docs:** on the Lane3600 only the last transaction can be reprinted; a duplicate for a given
   STAN answers CR 381.
+- **change (USB serial):** `protocolVersion` now defaults to `"v2"` over USB too (was `"v1"`).
+  The Lane3600 ends every reply with `!` and was only verified with `!`-terminated requests; a
+  `?`-terminated request was never tested. Set `"v1"` explicitly for a legacy terminal.
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.

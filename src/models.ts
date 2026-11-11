@@ -46,7 +46,7 @@ export const DEFAULTS: ResolvedOptions = {
   tcpPort: 4444,
   tcpConnectTimeoutMs: 120_000,
   serialBaudRate: 115200,
-  protocolVersion: "v2", // overridden per-transport by resolveOptions()
+  protocolVersion: "v2",
   registerId: "01",
   cashierId: "00001",
   paymentTimeoutMs: 120_000,
@@ -56,18 +56,12 @@ export const DEFAULTS: ResolvedOptions = {
 };
 
 /**
- * Merge user options over defaults, choosing a transport-appropriate protocol
- * default when the caller didn't pin one:
- *   - TCP (Sunmi P2/P3)      → "v2" ('!' terminator, NapsPay v5.4.4+)
- *   - serial (Ingenico Lane) → "v1" ('?' terminator, legacy terminals)
- * An explicit `protocolVersion` always wins.
+ * Merge user options over defaults. `protocolVersion` defaults to "v2" on both transports: the
+ * Ingenico Lane3600 over USB ends every reply with '!' and was only verified with '!'-terminated
+ * requests. An explicit `protocolVersion` ("v1" for legacy terminals) wins.
  */
 export function resolveOptions(options: NapsClientOptions = {}): ResolvedOptions {
-  const merged = { ...DEFAULTS, ...options };
-  if (options.protocolVersion === undefined) {
-    merged.protocolVersion = merged.transport === "serial" ? "v1" : "v2";
-  }
-  return merged;
+  return { ...DEFAULTS, ...options };
 }
 
 export interface PaymentResult {

@@ -483,8 +483,8 @@ await naps.networkTest(); // at app start: ~30 s on a Lane3600 over USB
 ```
 
 **Protocol version.** `protocolVersion` selects the expected terminator: `"v2"` (`!`, NapsPay
-v5.4.4) or `"v1"` (`?`, legacy). It defaults to `"v2"` for TCP and `"v1"` for serial; an explicit
-value wins. A mismatch still works, because the reader accepts either terminator.
+v5.4.4) or `"v1"` (`?`, legacy). It defaults to `"v2"` on both transports (the Lane3600 over USB
+ends every reply with `!`); set `"v1"` for a legacy terminal. A mismatch still works, because the reader accepts either terminator.
 
 **All options** (every one is optional except `tcpHost` for TCP):
 
