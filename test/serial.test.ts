@@ -105,6 +105,18 @@ describe("serial transport quiet time", () => {
     await confirm;
   });
 
+  it("does not cut a reply at a '!' inside receipt text", async () => {
+    vi.useFakeTimers();
+    const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", protocolVersion: "v2" }));
+    await t.connect();
+    const port = ports.at(-1)!;
+    const reply = t.sendReceive("001003008", 5_000);
+    await vi.advanceTimersByTimeAsync(32_000);
+    port.reply("001003108010014MERCI! A BIENT");  // '!' mid-frame, in the receipt
+    port.reply("013003000!");
+    expect(await reply).toBe("001003108010014MERCI! A BIENT013003000!");
+  });
+
   it("treats only TM 002 and TM 004 as confirmations", () => {
     expect(isPhase2("001003002003007")).toBe(true);
     expect(isPhase2("001003004003007")).toBe(true);

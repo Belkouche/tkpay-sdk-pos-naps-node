@@ -126,12 +126,11 @@ export class SerialTransport implements Transport {
       const onData = (chunk: Buffer) => {
         this.lastRxAt = Date.now();
         buf += chunk.toString("utf8");
-        let idx = buf.indexOf(this.terminator);
-        // A chunk ending in the other generation's terminator also ends the frame, so a
-        // v1/v2 mismatch skips the 1s silence fallback (matches the canonical C# reader).
-        if (idx < 0 && /[!?]$/.test(buf)) idx = buf.length - 1;
-        if (idx >= 0) {
-          finish(null, buf.slice(0, idx + 1));
+        // The frame ends when the data received so far ends with a terminator ('!' v2, '?' v1;
+        // either one, as in the C# reader). A '!' or '?' inside receipt text must not cut the
+        // reply short: the rest would be lost, or read as the next reply.
+        if (/[!?]$/.test(buf)) {
+          finish(null, buf);
         } else {
           if (drainTimer) clearTimeout(drainTimer);
           drainTimer = setTimeout(() => finish(null, buf), 1000);

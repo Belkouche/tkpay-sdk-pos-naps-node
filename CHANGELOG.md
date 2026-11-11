@@ -33,6 +33,10 @@ after the port opens, so the first request of a session always answered at 30.1 
 - **fix (USB serial):** after a timeout or error the port is closed, so a reply that
   arrives late is never read as the answer to the next request. The next call reopens
   the port (and waits again for the Lane3600).
+- **fix (reader, USB and TCP):** a reply ends only when the data received ends with a
+  terminator (`!` or `?`), as in the C# reader. It used to stop at the first `!` anywhere, so a
+  `!` inside receipt text cut the reply short; on the kept-open serial port the rest could be
+  read as the next reply.
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.
