@@ -133,14 +133,17 @@ export class SerialTransport implements Transport {
       };
       const finish = (err: Error | null, value?: string) => {
         cleanup();
-        if (err) reject(err);
-        else resolve(value!);
+        if (err) {
+          // A reply that comes after a timeout or error must not be read as the answer to the
+          // next request: close the port so the next call opens a fresh one.
+          this.disconnect();
+          reject(err);
+        } else resolve(value!);
       };
 
       port.on("data", onData);
       port.on("error", onErr);
-      // The Lane3600 needs the terminator on our frames too: without it, a TM 002 sent while it
-      // shows "attente validation caisse" is never taken as complete and the payment times out.
+      // Frames end with the terminator, as in the diagnostic session that worked on the Lane3600.
       const frame = message.endsWith(this.terminator) ? message : message + this.terminator;
       port.write(frame, "utf8", (err) => {
         if (err) finish(err);

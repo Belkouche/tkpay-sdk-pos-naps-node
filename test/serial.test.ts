@@ -64,6 +64,22 @@ describe("serial transport write", () => {
 });
 
 describe("serial transport disconnect", () => {
+  it("closes the port after a timeout, so a late reply is never read as the next answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", protocolVersion: "v2" }));
+      await t.connect();
+      const port = ports.at(-1)!;
+      const sent = expect(t.sendReceive("001003002", 20)).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(40_000);
+      await sent;
+      expect(port.closeCalls).toHaveLength(1);
+      expect(t.isConnected).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes an open port with a callback, so close errors are never emitted unhandled", async () => {
     const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x" }));
     await t.connect();

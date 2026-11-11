@@ -23,6 +23,9 @@ after the port opens, so the first request of a session always answered at 30.1 
   (`hupcl: false`); every frame ends with the protocol terminator (`!` v2, `?` v1); frames are
   written at least 0.5 s after the terminal's last byte. These match the diagnostic session that
   completed pay, confirm and void on the Lane3600. None of them alone fixed the lost TM 002.
+- **fix (USB serial):** after a timeout or error the port is closed, so a reply that
+  arrives late is never read as the answer to the next request. The next call reopens
+  the port (and waits again for the Lane3600).
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.
