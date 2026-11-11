@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — Ingenico Lane3600 fixes
+
+Found on a live Lane3600 over USB. The terminal holds back every answer until about 30 s
+after the port opens, so the first request of a session always answered at 30.1 s.
+
+- **fix (USB serial, payment confirmation):** the first frame after the port opens waits until
+  the port has been open 32 s. When a payment was the first frame, its TM 101 arrived 30 s late,
+  after the terminal had stopped waiting for TM 002: it showed "attente validation caisse",
+  timed out, and the authorised payment was not recorded. Keep the client connected between
+  transactions so the wait happens once.
+- **fix (timeouts):** `testTimeoutMs` now defaults to 90 s (was 30 s). At 30 s, `cancel()`
+  gave up on TM 003 just before the terminal answered, and the terminal then stayed on its
+  void screen waiting for a TM 004 that never came.
+- **fix (timeouts):** `duplicateReceipt()` and `resetPinPad()` use `testTimeoutMs` instead
+  of a fixed 15 s, which was too short for the Lane3600.
+- **fix (void receipt):** when TM 103 carries no receipt, as on the Lane3600, `cancel()` returns
+  the TM 104 receipt (the only void receipt, "SIGNATURE CLIENT") as `merchantReceiptLines` and
+  `receiptLines` instead of `customerReceiptLines`. Terminals that send a receipt with TM 103 are
+  unchanged.
+- **change (USB serial):** the port opens with DTR/RTS asserted and keeps them on close
+  (`hupcl: false`); every frame ends with the protocol terminator (`!` v2, `?` v1); frames are
+  written at least 0.5 s after the terminal's last byte. These match the diagnostic session that
+  completed pay, confirm and void on the Lane3600. None of them alone fixed the lost TM 002.
+- **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
+  already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
+  unhandled "Port is not open" error.
+
 ## v1.2.1 — card number masking
 
 - **fix (card number masking):** card numbers are masked (first 6 + last 4 digits) in

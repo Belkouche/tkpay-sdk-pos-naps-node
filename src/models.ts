@@ -32,7 +32,7 @@ export interface NapsClientOptions {
 
   paymentTimeoutMs?: number; // default 120_000
   confirmationTimeoutMs?: number; // default 40_000 (protocol deadline)
-  testTimeoutMs?: number; // default 30_000
+  testTimeoutMs?: number; // default 90_000 (Lane3600 answers TM 003/008/009 after ~30 s)
   referencingTimeoutMs?: number; // default 60_000
 }
 
@@ -51,7 +51,7 @@ export const DEFAULTS: ResolvedOptions = {
   cashierId: "00001",
   paymentTimeoutMs: 120_000,
   confirmationTimeoutMs: 40_000,
-  testTimeoutMs: 30_000,
+  testTimeoutMs: 90_000,
   referencingTimeoutMs: 60_000,
 };
 

@@ -167,6 +167,20 @@ describe("NapsClient.cancel", () => {
     expect(p2[TAG.STAN]).toBe("703062");
   });
 
+  it("returns the TM 104 receipt as the merchant copy when TM 103 has none (Ingenico Lane3600)", async () => {
+    const voidDp = "03000201031001S032001C033010ANNULATION";
+    const t = new FakeTransport([
+      common("103", "000", tlv(TAG.STAN, "000182")),
+      common("104", "000", tlv(TAG.STAN, "000182") + tlv(TAG.DP, voidDp)),
+    ]);
+    const res = await client(t).cancel("000182", 1);
+
+    expect(res).toMatchObject({ isSuccess: true, isCancelled: true });
+    expect(res.receiptLines?.[0].text).toBe("ANNULATION");
+    expect(res.merchantReceiptLines?.[0].text).toBe("ANNULATION");
+    expect(res.customerReceiptLines).toBeUndefined();
+  });
+
   it("TM 004 carries the TM 003 sequence in NS (not NSA) and echoes MT/DE/DATR/HETR from TM 103", async () => {
     const t = new FakeTransport([
       common("103", "000", tlv(TAG.STAN, "703062") + tlv(TAG.DATR, "10092026") + tlv(TAG.HETR, "101500")),

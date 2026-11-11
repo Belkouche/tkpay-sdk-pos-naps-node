@@ -216,7 +216,9 @@ naps.disconnect();
 
 On a success, `voided.merchantReceiptLines` is the merchant copy (TM 103) and
 `voided.customerReceiptLines` the customer copy (TM 104; the terminal sends no receipt with CR 480).
-A pending or refused void keeps the TM 103 merchant copy.
+The Ingenico Lane3600 sends no receipt with TM 103: its only void receipt comes with TM 104, and the
+SDK returns it as the merchant copy (`merchantReceiptLines` and `receiptLines`), with no customer copy.
+A pending or refused void keeps the TM 103 merchant copy (none on the Lane3600).
 `originalSequence`, when given, is sent as NSA (005) on TM 003 only. A timeout on TM 003 itself
 returns `responseCode: "TIMEOUT"`.
 
@@ -311,7 +313,7 @@ sent: it parses every line, keeps them in order and adds, merges or drops nothin
 | Operation | Merchant copy ("Copie Commercant") | Customer copy ("Copie Client") |
 |---|---|---|
 | `pay()` approved | `merchantReceiptLines` ← TM 101 | `customerReceiptLines` ← TM 102 |
-| `cancel()` completed | `merchantReceiptLines` ← TM 103 | `customerReceiptLines` ← TM 104 (none with CR 480) |
+| `cancel()` completed | `merchantReceiptLines` ← TM 103 (Lane3600: ← TM 104) | `customerReceiptLines` ← TM 104 (none with CR 480; none on the Lane3600) |
 | `cancel()` pending or refused at TM 104 | `merchantReceiptLines` ← TM 103 | — |
 
 Everything else returns the receipt as sent in `receiptLines`: declines (TM 101), `duplicateReceipt()`
@@ -402,12 +404,12 @@ There are three kinds of outcome:
    |---|---|---|
    | `pay()` TM 001 | `paymentTimeoutMs` (120 s) | returns `responseCode: "TIMEOUT"` |
    | `pay()` TM 002 | `confirmationTimeoutMs` (40 s) | returns the approval, `responseMessage: "Confirmation timed out"` |
-   | `cancel()` TM 003 | `testTimeoutMs` (30 s) | returns `responseCode: "TIMEOUT"` |
+   | `cancel()` TM 003 | `testTimeoutMs` (90 s) | returns `responseCode: "TIMEOUT"` |
    | `cancel()` TM 004 | `confirmationTimeoutMs` (40 s) | returns `isPending: true`, `responseCode: "TIMEOUT"` |
-   | `networkTest()`, `totals()` | `testTimeoutMs` (30 s) | **throws** `TerminalTimeoutError` |
+   | `networkTest()`, `totals()` | `testTimeoutMs` (90 s) | **throws** `TerminalTimeoutError` |
    | `referencing()` | `referencingTimeoutMs` (60 s) | **throws** `TerminalTimeoutError` |
    | `settlement()` | `paymentTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
-   | `duplicateReceipt()`, `resetPinPad()` | fixed 15 s | **throws** `TerminalTimeoutError` |
+   | `duplicateReceipt()`, `resetPinPad()` | `testTimeoutMs` (90 s) | **throws** `TerminalTimeoutError` |
    | connecting | `tcpConnectTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
 
 3. **A transport error** — connection refused, socket closed before a response, serial port
@@ -459,6 +461,11 @@ const lane = new NapsClient({ transport: "serial" });                           
 const lane2 = new NapsClient({ transport: "serial", serialPath: "/dev/tty.usbmodem1401" }); // explicit
 ```
 
+The Lane3600 holds back its answers until about 30 s after the port opens, so the first request
+after opening waits until the port has been open 32 s. A payment sent earlier would get its
+approval too late to confirm. Connect once when the app starts and keep the client connected
+between transactions, so only the first request waits.
+
 **Protocol version.** `protocolVersion` selects the expected terminator: `"v2"` (`!`, NapsPay
 v5.4.4) or `"v1"` (`?`, legacy). It defaults to `"v2"` for TCP and `"v1"` for serial; an explicit
 value wins. A mismatch still works, because the reader accepts either terminator.
@@ -479,7 +486,7 @@ const naps = new NapsClient({
   cashierId: "00001",                  // 5 digits  }
   paymentTimeoutMs: 120_000,
   confirmationTimeoutMs: 40_000,       // protocol deadline for TM 002 / TM 004
-  testTimeoutMs: 30_000,
+  testTimeoutMs: 90_000,
   referencingTimeoutMs: 60_000,
 });
 ```

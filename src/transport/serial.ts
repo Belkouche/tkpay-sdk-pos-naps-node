@@ -15,12 +15,13 @@ interface SerialPortLike {
   isOpen: boolean;
   open(cb: (err: Error | null) => void): void;
   close(cb?: (err?: Error | null) => void): void;
+  set(opts: { dtr?: boolean; rts?: boolean }, cb: (err?: Error | null) => void): void;
   write(data: string, encoding: string, cb?: (err?: Error | null) => void): void;
   on(event: "data", cb: (chunk: Buffer) => void): void;
   on(event: "error", cb: (err: Error) => void): void;
   removeListener(event: string, cb: (...args: unknown[]) => void): void;
 }
-type SerialPortCtor = new (opts: { path: string; baudRate: number; autoOpen: boolean }) => SerialPortLike;
+type SerialPortCtor = new (opts: { path: string; baudRate: number; autoOpen: boolean; hupcl: boolean }) => SerialPortLike;
 
 async function loadSerialPort(): Promise<SerialPortCtor> {
   try {
@@ -33,8 +34,23 @@ async function loadSerialPort(): Promise<SerialPortCtor> {
   }
 }
 
+/** Quiet time kept between the terminal's last byte and our next frame. */
+const SETTLE_MS = 500;
+
+/**
+ * The Ingenico Lane3600 holds back every answer until ~30 s after the port opens: the first
+ * frame's reply always landed at 30.1 s. A TM 101 delayed that way reached us after the
+ * terminal had given up waiting for TM 002 ("attente validation caisse" timeout), so the
+ * payment was never recorded. Frames sent once the port has been open this long answer
+ * normally (TM 008 in 3–7 s), so the first frame waits for it. Keep the client connected
+ * between transactions to pay this once.
+ */
+const READY_MS = 32_000;
+
 export class SerialTransport implements Transport {
   private port: SerialPortLike | null = null;
+  private lastRxAt = 0;
+  private openedAt = 0;
   /** Explicit path, or undefined to auto-discover the Ingenico port on connect. */
   private path: string | undefined;
   private readonly baudRate: number;
@@ -61,15 +77,22 @@ export class SerialTransport implements Transport {
       this.path = found;
     }
     const SerialPort = await loadSerialPort();
-    const port = new SerialPort({ path: this.path, baudRate: this.baudRate, autoOpen: false });
+    // DTR/RTS asserted and never dropped on close (hupcl: false).
+    const port = new SerialPort({ path: this.path, baudRate: this.baudRate, autoOpen: false, hupcl: false });
     await new Promise<void>((resolve, reject) => {
       port.open((err) => (err ? reject(err) : resolve()));
     });
+    await new Promise<void>((resolve, reject) => {
+      port.set({ dtr: true, rts: true }, (err) => (err ? reject(err) : resolve()));
+    });
     this.port = port;
+    this.openedAt = Date.now();
   }
 
   disconnect(): void {
-    this.port?.close();
+    // The port may already be gone (USB unplugged, terminal rebooted). Closing with a callback
+    // keeps serialport from emitting an unhandled 'error' that would crash the process.
+    if (this.port?.isOpen) this.port.close(() => {});
     this.port = null;
   }
 
@@ -78,12 +101,16 @@ export class SerialTransport implements Transport {
     const port = this.port;
     if (!port) throw new Error("serial port not open");
 
+    const wait = Math.max(this.openedAt + READY_MS, this.lastRxAt + SETTLE_MS) - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+
     return new Promise<string>((resolve, reject) => {
       let buf = "";
       let drainTimer: NodeJS.Timeout | null = null;
       const overall = setTimeout(() => finish(new TerminalTimeoutError(timeoutMs)), timeoutMs);
 
       const onData = (chunk: Buffer) => {
+        this.lastRxAt = Date.now();
         buf += chunk.toString("utf8");
         let idx = buf.indexOf(this.terminator);
         // A chunk ending in the other generation's terminator also ends the frame, so a
@@ -112,7 +139,10 @@ export class SerialTransport implements Transport {
 
       port.on("data", onData);
       port.on("error", onErr);
-      port.write(message, "utf8", (err) => {
+      // The Lane3600 needs the terminator on our frames too: without it, a TM 002 sent while it
+      // shows "attente validation caisse" is never taken as complete and the payment times out.
+      const frame = message.endsWith(this.terminator) ? message : message + this.terminator;
+      port.write(frame, "utf8", (err) => {
         if (err) finish(err);
       });
     });
