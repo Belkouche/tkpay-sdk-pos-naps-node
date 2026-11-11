@@ -291,6 +291,23 @@ describe("extractLastMessage", () => {
   it("returns empty for empty input", () => {
     expect(extractLastMessage("")).toBe("");
   });
+  it("does not split at a '!' inside a receipt value", () => {
+    const msg = "001003103" + "010006MERCI!" + "013003000";
+    expect(extractLastMessage(msg + "!")).toBe(msg + "!");
+    expect(extractLastMessage("001003109!" + msg + "!")).toBe(msg + "!");
+  });
+});
+
+describe("parseMessage framing", () => {
+  it("keeps the fields after a receipt that contains '!' or '?'", () => {
+    const f = parseMessage("001003102" + "010007MERCI!?" + "013003000" + "008006000250!");
+    expect(f[TAG.DP]).toBe("MERCI!?");
+    expect(f[TAG.CR]).toBe("000");
+    expect(f[TAG.STAN]).toBe("000250");
+  });
+  it("stops at a terminator on a field boundary", () => {
+    expect(parseMessage("001003109013003000!013003999")[TAG.CR]).toBe("000");
+  });
 });
 
 describe("constants", () => {

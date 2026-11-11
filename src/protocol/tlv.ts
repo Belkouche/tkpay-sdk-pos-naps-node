@@ -333,14 +333,14 @@ export function buildSettlement(ncai = "0100001"): string {
  * number never leaves this function.
  */
 export function parseMessage(raw: string): Record<string, string> {
-  let data = raw;
-  const term = data.search(/[!?]/);
-  if (term >= 0) data = data.slice(0, term);
-  data = data.trim();
+  const data = raw.trim();
 
+  // Fields are walked by their length, so a '!' or '?' inside a value (receipt text) is data;
+  // a terminator ends the message only where the next field would start.
   const fields: Record<string, string> = {};
   let pos = 0;
   while (pos + 6 <= data.length) {
+    if (data[pos] === "!" || data[pos] === "?") break;
     const tag = data.slice(pos, pos + 3);
     const lenStr = data.slice(pos + 3, pos + 6);
     const len = Number(lenStr);
@@ -422,8 +422,26 @@ function maskReceiptBlock(dp: string): string {
   return out;
 }
 
-/** Return the last '!'/'?'-terminated message from a raw stream. */
+/**
+ * Return the last message from a raw stream that may hold several. Fields are walked by their
+ * length, so only a '!'/'?' at a field boundary separates messages; one inside a value is data.
+ */
 export function extractLastMessage(raw: string): string {
-  const parts = raw.split(/[!?]/).filter((p) => p.length > 0);
-  return parts.length === 0 ? "" : parts[parts.length - 1] + "!";
+  const data = raw.trim();
+  const messages: string[] = [];
+  let start = 0;
+  let pos = 0;
+  while (pos < data.length) {
+    if (data[pos] === "!" || data[pos] === "?") {
+      if (pos > start) messages.push(data.slice(start, pos));
+      start = ++pos;
+      continue;
+    }
+    const tag = data.slice(pos, pos + 3);
+    const lenStr = data.slice(pos + 3, pos + 6);
+    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || pos + 6 + Number(lenStr) > data.length) break;
+    pos += 6 + Number(lenStr);
+  }
+  if (pos > start) messages.push(data.slice(start, pos));
+  return messages.length === 0 ? "" : messages[messages.length - 1] + "!";
 }

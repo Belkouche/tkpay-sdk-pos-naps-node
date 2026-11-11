@@ -37,6 +37,9 @@ after the port opens, so the first request of a session always answered at 30.1 
   terminator (`!` or `?`), as in the C# reader. It used to stop at the first `!` anywhere, so a
   `!` inside receipt text cut the reply short; on the kept-open serial port the rest could be
   read as the next reply.
+- **fix (parser):** `parseMessage` and `extractLastMessage` walk the fields by their length and
+  treat `!` / `?` as an end of message only at a field boundary. They used to stop or split at
+  the first one anywhere, dropping the fields after a receipt that contained `!`.
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.
