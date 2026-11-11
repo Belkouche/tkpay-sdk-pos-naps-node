@@ -19,10 +19,13 @@ after the port opens, so the first request of a session always answered at 30.1 
   the TM 104 receipt (the only void receipt, "SIGNATURE CLIENT") as `merchantReceiptLines` and
   `receiptLines` instead of `customerReceiptLines`. Terminals that send a receipt with TM 103 are
   unchanged.
+- **fix (USB serial, back-to-back operations):** after a reply the Lane3600 keeps showing or
+  printing the result for a moment, and a request arriving then is lost (found with the C# SDK:
+  a void sent right after a payment got no reply, and a payment sent 0.5 s after a network test
+  was refused with CR 100 without a card prompt). A request that starts a new operation now
+  waits 3 s after the terminal's last reply; the confirmations (TM 002, TM 004) wait 0.5 s.
 - **change (USB serial):** the port opens with DTR/RTS asserted and keeps them on close
-  (`hupcl: false`); every frame ends with the protocol terminator (`!` v2, `?` v1); frames are
-  written at least 0.5 s after the terminal's last byte. These match the diagnostic session that
-  completed pay, confirm and void on the Lane3600. None of them alone fixed the lost TM 002.
+  (`hupcl: false`), and every frame ends with the protocol terminator (`!` v2, `?` v1).
 - **fix (USB serial):** after a timeout or error the port is closed, so a reply that
   arrives late is never read as the answer to the next request. The next call reopens
   the port (and waits again for the Lane3600).

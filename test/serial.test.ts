@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveOptions } from "../src/models.js";
-import { createSerialTransport } from "../src/transport/serial.js";
+import { createSerialTransport, isPhase2 } from "../src/transport/serial.js";
 
 const ports: FakePort[] = [];
 
@@ -23,8 +23,16 @@ class FakePort {
   set(_opts: { dtr?: boolean; rts?: boolean }, cb: (err?: Error | null) => void) {
     cb(null);
   }
-  on() {}
-  removeListener() {}
+  dataListeners: Array<(chunk: Buffer) => void> = [];
+  on(event: string, cb: (chunk: Buffer) => void) {
+    if (event === "data") this.dataListeners.push(cb);
+  }
+  removeListener(event: string, cb: (chunk: Buffer) => void) {
+    if (event === "data") this.dataListeners = this.dataListeners.filter((l) => l !== cb);
+  }
+  reply(frame: string) {
+    for (const l of [...this.dataListeners]) l(Buffer.from(frame));
+  }
   write(data: string, _enc: string, cb?: (err?: Error | null) => void) {
     this.writes.push(data);
     cb?.(null);
@@ -60,6 +68,49 @@ describe("serial transport write", () => {
     expect(port.writes).toEqual(["001003002!"]);
     await vi.advanceTimersByTimeAsync(100);
     await sent;
+  });
+});
+
+describe("serial transport quiet time", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("waits 3 s after a reply before a new operation, 0.5 s before a confirmation", async () => {
+    vi.useFakeTimers();
+    const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", protocolVersion: "v2" }));
+    await t.connect();
+    const port = ports.at(-1)!;
+
+    // Network test after the 32 s post-open wait, answered at once.
+    const test = t.sendReceive("001003009", 5_000);
+    await vi.advanceTimersByTimeAsync(32_000);
+    port.reply("001003109013003000!");
+    await test;
+
+    // Lane3600: a TM 001 0.5 s after TM 109 was refused (CR 100) without a card prompt.
+    const pay = t.sendReceive("001003001", 5_000);
+    await vi.advanceTimersByTimeAsync(2_900);
+    expect(port.writes).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(port.writes.at(-1)).toBe("001003001!");
+    port.reply("001003101013003000!");
+    await pay;
+
+    // TM 002 is what the terminal is waiting for: 0.5 s only.
+    const confirm = t.sendReceive("001003002", 5_000);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(port.writes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(port.writes.at(-1)).toBe("001003002!");
+    port.reply("001003102013003000!");
+    await confirm;
+  });
+
+  it("treats only TM 002 and TM 004 as confirmations", () => {
+    expect(isPhase2("001003002003007")).toBe(true);
+    expect(isPhase2("001003004003007")).toBe(true);
+    expect(isPhase2("001003001002003")).toBe(false);
+    expect(isPhase2("001003003003007")).toBe(false);
+    expect(isPhase2("001003009003007")).toBe(false);
   });
 });
 

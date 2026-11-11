@@ -34,8 +34,21 @@ async function loadSerialPort(): Promise<SerialPortCtor> {
   }
 }
 
-/** Quiet time kept between the terminal's last byte and our next frame. */
+/** Quiet time before a phase-2 frame (TM 002, TM 004), which the terminal is waiting for. */
 const SETTLE_MS = 500;
+
+/**
+ * Quiet time before any frame that starts a new operation. After a reply the Lane3600 keeps
+ * showing or printing the result for a moment, and a request arriving then is lost: a TM 003
+ * sent right after TM 102 got no reply, and a TM 001 sent 0.5 s after TM 109 was refused with
+ * CR 100 without asking for a card. The same requests sent 3 s later completed.
+ */
+const IDLE_MS = 3_000;
+
+/** TM 002 / TM 004: the confirmation the terminal is waiting for, not a new operation. */
+export function isPhase2(message: string): boolean {
+  return message.startsWith("001003002") || message.startsWith("001003004");
+}
 
 /**
  * The Ingenico Lane3600 holds back every answer until ~30 s after the port opens: the first
@@ -101,7 +114,8 @@ export class SerialTransport implements Transport {
     const port = this.port;
     if (!port) throw new Error("serial port not open");
 
-    const wait = Math.max(this.openedAt + READY_MS, this.lastRxAt + SETTLE_MS) - Date.now();
+    const quiet = isPhase2(message) ? SETTLE_MS : IDLE_MS;
+    const wait = Math.max(this.openedAt + READY_MS, this.lastRxAt + quiet) - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 
     return new Promise<string>((resolve, reject) => {
