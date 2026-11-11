@@ -252,6 +252,11 @@ console.log(last.isSuccess, byStan.responseCode);
 naps.disconnect();
 ```
 
+On the Ingenico Lane3600, only the last transaction can be reprinted: a duplicate for a given STAN
+answered CR 381, even for a sale made minutes earlier. Its duplicate holds both copies (merchant,
+then customer marked DUPLICATA) and has no STAN tag; read the STAN from the receipt text. To check a
+pending void on the Lane, call `duplicateReceipt()` straight away, before any other transaction.
+
 **Totals** (TM 010) — the running totals ticket:
 
 ```ts

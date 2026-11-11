@@ -13,6 +13,7 @@ import {
   maskPan,
   describeResponse,
   extractLastMessage,
+  byteLengthsToCharLengths,
   isCompleteMessage,
   RESPONSE_CODES,
   TM,
@@ -331,6 +332,21 @@ describe("DP longer than 999 (Lane3600 caps the length at 999)", () => {
     expect(isCompleteMessage(longFrame.slice(0, -1))).toBe(false);
     expect(isCompleteMessage(longFrame)).toBe(true);
     expect(extractLastMessage(longFrame)).toBe(longFrame);
+  });
+});
+
+describe("byteLengthsToCharLengths (Lane3600 over USB counts bytes)", () => {
+  it("rewrites field and DP sub-tag lengths from bytes to characters", () => {
+    // "Copie Commerçé" is 14 chars but 16 UTF-8 bytes; the Lane declares 016.
+    const dpBytes = "*030002" + "01" + "033016" + "Copie Commerçé" + "*030002" + "02" + "033004" + "NEXT" + "?";
+    const frame = Buffer.from("001003108" + "010" + String(Buffer.byteLength(dpBytes)).padStart(3, "0") + dpBytes + "013003000!", "utf8");
+    const converted = byteLengthsToCharLengths(frame.toString("latin1"));
+    const lines = parseReceipt(parseMessage(converted)[TAG.DP]).map((l) => l.text);
+    expect(lines).toEqual(["Copie Commerçé", "NEXT"]);
+    expect(parseMessage(converted)[TAG.CR]).toBe("000");
+  });
+  it("leaves an ASCII frame unchanged", () => {
+    expect(byteLengthsToCharLengths(longFrame)).toBe(longFrame);
   });
 });
 

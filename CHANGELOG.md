@@ -45,6 +45,13 @@ after the port opens, so the first request of a session always answered at 30.1 
   (a duplicate holding both copies is ~2,150 chars). A DP declared 999 long now ends at its own
   `?` end marker, found by walking its sub-tags; it used to be cut at 999 chars, losing most of
   the second copy.
+- **fix (USB serial, accented text):** the Lane3600 counts field and DP sub-tag lengths in UTF-8
+  bytes. A multi-byte character in a receipt line (it sends `ç` as a 3-byte replacement
+  character) made the character-based walk read 2 characters of the next line into it. Serial
+  replies are now read byte for byte and converted to character lengths before parsing. TCP
+  (Sunmi, whose lengths count characters) is unchanged.
+- **docs:** on the Lane3600 only the last transaction can be reprinted; a duplicate for a given
+  STAN answers CR 381.
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.

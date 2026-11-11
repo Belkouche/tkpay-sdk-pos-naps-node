@@ -1,6 +1,6 @@
 import type { ResolvedOptions } from "../models.js";
 import { findIngenicoPort } from "../discovery.js";
-import { isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
+import { byteLengthsToCharLengths, isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -126,7 +126,8 @@ export class SerialTransport implements Transport {
 
       const onData = (chunk: Buffer) => {
         this.lastRxAt = Date.now();
-        buf += chunk.toString("utf8");
+        // One character per byte: the Lane3600's lengths count bytes (see byteLengthsToCharLengths).
+        buf += chunk.toString("latin1");
         // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
         // lines end with '?') must not cut the reply short: the rest would be lost, or read as
         // the next reply.
@@ -154,7 +155,7 @@ export class SerialTransport implements Transport {
           // next request: close the port so the next call opens a fresh one.
           this.disconnect();
           reject(err);
-        } else resolve(value!);
+        } else resolve(byteLengthsToCharLengths(value!));
       };
 
       port.on("data", onData);

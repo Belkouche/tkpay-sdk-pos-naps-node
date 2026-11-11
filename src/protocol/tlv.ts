@@ -466,6 +466,46 @@ export function isCompleteMessage(buf: string): boolean {
   return false;
 }
 
+const fromBytes = (latin1: string): string => Buffer.from(latin1, "latin1").toString("utf8");
+const lenField = (n: number): string => String(Math.min(n, 999)).padStart(3, "0");
+
+/**
+ * Rewrite a frame whose lengths count bytes into one whose lengths count characters. The
+ * Ingenico Lane3600 over USB counts UTF-8 bytes (a 3-byte character in a DP line made a
+ * character-based walk read 2 characters into the next line); the rest of the SDK counts
+ * characters, as the Sunmi does over TCP. `latin1` holds one character per received byte. Each
+ * value, and each DP sub-tag value, is decoded as UTF-8 and its length rewritten (DP still
+ * capped at 999, as the terminal sends it).
+ */
+export function byteLengthsToCharLengths(latin1: string): string {
+  let out = "";
+  let pos = 0;
+  while (pos < latin1.length && latin1[pos] !== "!" && latin1[pos] !== "?") {
+    const end = fieldEnd(latin1, pos);
+    if (end < 0 || end > latin1.length) break;
+    const tag = latin1.slice(pos, pos + 3);
+    const value = tag === TAG.DP ? dpBytesToChars(latin1.slice(pos + 6, end)) : fromBytes(latin1.slice(pos + 6, end));
+    out += tag + lenField(value.length) + value;
+    pos = end;
+  }
+  return out + fromBytes(latin1.slice(pos));
+}
+
+function dpBytesToChars(dp: string): string {
+  let out = "";
+  let i = 0;
+  while (i < dp.length) {
+    if (dp[i] === "*" || dp[i] === "?") { out += dp[i++]; continue; }
+    const sub = dp.slice(i, i + 6);
+    const end = i + 6 + Number(sub.slice(3));
+    if (!/^\d{6}$/.test(sub) || end > dp.length) break;
+    const value = fromBytes(dp.slice(i + 6, end));
+    out += sub.slice(0, 3) + lenField(value.length) + value;
+    i = end;
+  }
+  return out + fromBytes(dp.slice(i));
+}
+
 /**
  * Return the last message from a raw stream that may hold several. Fields are walked by their
  * length, so only a '!'/'?' at a field boundary separates messages; one inside a value is data.
