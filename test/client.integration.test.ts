@@ -110,8 +110,9 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     // per phase; a stalled TM 004 would take the full 40 s confirmation timeout.
     expect(Date.now() - t0).toBeLessThan(5000);
     expect(cancel).toMatchObject({ isSuccess: true, isCancelled: true, responseCode: "000" });
-    expect(cancel.receiptLines?.length).toBeGreaterThan(0); // merchant copy, TM 103
-    expect(cancel.customerReceiptLines?.length).toBeGreaterThan(0); // customer copy, TM 104
+    // Live terminals: TM 103 has no receipt; the TM 104 receipt is the merchant copy.
+    expect(cancel.merchantReceiptLines?.length).toBeGreaterThan(0);
+    expect(cancel.customerReceiptLines).toBeUndefined();
     expect(cancel.stan).toMatch(/^\d{6}$/); // void STAN from TM 104
   });
 
@@ -155,16 +156,16 @@ suite("NapsClient ⇄ emulator receipts (golden)", () => {
   it("payment: merchant copy (TM 101) and customer copy (TM 102)", async () => {
     const res = await newClient().pay(10);
     expect(res.isSuccess).toBe(true);
-    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "DEBIT", "Copie Commercant"));
+    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "DEBIT", "Copie Commerçant"));
     expect(normalized(res.customerReceiptLines)).toEqual(goldenReceipt("10.00", "DEBIT", "Copie Client"));
   });
 
-  it("void: merchant copy (TM 103) and customer copy (TM 104)", async () => {
+  it("void: the TM 104 receipt is the merchant copy (TM 103 has none, as on live terminals)", async () => {
     const pay = await newClient().pay(10);
     const res = await newClient().cancel(pay.stan!, 10, pay.sequence);
     expect(res.isSuccess).toBe(true);
-    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "ANNULATION", "Copie Commercant"));
-    expect(normalized(res.customerReceiptLines)).toEqual(goldenReceipt("10.00", "ANNULATION", "Copie Client"));
+    expect(normalized(res.merchantReceiptLines)).toEqual(goldenReceipt("10.00", "ANNULATION", "Copie Commerçant"));
+    expect(res.customerReceiptLines).toBeUndefined();
   });
 });
 
@@ -220,7 +221,7 @@ for (const mode of ["void_995", "void_no_confirm"]) {
   suite(`NapsClient ⇄ emulator --mode ${mode}`, () => {
     useEmulator(["--mode", mode]);
 
-    it("fails closed: pending, keeping the STAN and the TM 103 merchant receipt", async () => {
+    it("fails closed: pending, keeping the STAN", async () => {
       // Short confirmation timeout so void_no_confirm doesn't wait the full 40 s.
       const c = new NapsClient({ transport: "tcp", tcpHost: HOST, tcpPort: PORT, confirmationTimeoutMs: 3000 });
       const { pay, cancel } = await payThenVoid(c);
@@ -231,7 +232,7 @@ for (const mode of ["void_995", "void_no_confirm"]) {
         stan: pay.stan,
         responseCode: mode === "void_995" ? "995" : "TIMEOUT",
       });
-      expect(cancel.receiptLines?.length).toBeGreaterThan(0);
+      expect(cancel.receiptLines).toBeUndefined(); // TM 103 carries no receipt on live terminals
     });
   });
 }
