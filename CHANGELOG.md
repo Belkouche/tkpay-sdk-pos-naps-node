@@ -41,6 +41,10 @@ after the port opens, so the first request of a session always answered at 30.1 
 - **fix (parser):** `parseMessage` and `extractLastMessage` walk the fields by their length and
   treat `!` / `?` as an end of message only at a field boundary. They used to stop or split at
   the first one anywhere, dropping the fields after a receipt that contained `!`.
+- **fix (long receipts):** the Lane3600 writes 999 as the DP length when the receipt is longer
+  (a duplicate holding both copies is ~2,150 chars). A DP declared 999 long now ends at its own
+  `?` end marker, found by walking its sub-tags; it used to be cut at 999 chars, losing most of
+  the second copy.
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.

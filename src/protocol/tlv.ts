@@ -327,6 +327,31 @@ export function buildSettlement(ncai = "0100001"): string {
 }
 
 /**
+ * End index (exclusive) of the field starting at `pos`, -1 if its header is not TLV. The result
+ * can be past `data.length` when the field is not fully received yet. The Ingenico Lane3600 caps
+ * the DP length at 999 when the receipt is longer (a duplicate with both copies is ~2,150
+ * chars), so a DP declared 999 long ends at its own '?' end marker, found by walking its
+ * sub-tags and '*' line separators.
+ */
+function fieldEnd(data: string, pos: number): number {
+  const tag = data.slice(pos, pos + 3);
+  const lenStr = data.slice(pos + 3, pos + 6);
+  if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr)) return -1;
+  const declaredEnd = pos + 6 + Number(lenStr);
+  if (tag !== TAG.DP || lenStr !== "999") return declaredEnd;
+  let i = pos + 6;
+  while (i < data.length) {
+    if (data[i] === "*") { i++; continue; }
+    if (data[i] === "?") return Math.max(i + 1, declaredEnd);
+    const sub = data.slice(i, i + 6);
+    if (sub.length < 6) return data.length + 1; // rest of the receipt not received yet
+    if (!/^\d{6}$/.test(sub)) return declaredEnd;
+    i += 6 + Number(sub.slice(3));
+  }
+  return data.length + 1;
+}
+
+/**
  * Parse a TLV string → { tag: value }. Stops at the first terminator ('!' v2, '?' v1)
  * so trailing receipt/noise after it is ignored. Card numbers are masked here (first 6 +
  * last 4 digits) — in NCAR (007) and inside the DP (010) receipt text — so the full
@@ -341,14 +366,12 @@ export function parseMessage(raw: string): Record<string, string> {
   let pos = 0;
   while (pos + 6 <= data.length) {
     if (data[pos] === "!" || data[pos] === "?") break;
+    const end = fieldEnd(data, pos);
+    if (end < 0 || end > data.length) break;
     const tag = data.slice(pos, pos + 3);
-    const lenStr = data.slice(pos + 3, pos + 6);
-    const len = Number(lenStr);
-    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || Number.isNaN(len)) break;
-    if (pos + 6 + len > data.length) break;
-    const value = data.slice(pos + 6, pos + 6 + len);
+    const value = data.slice(pos + 6, end);
     fields[tag] = tag === TAG.NCAR ? maskCardField(value) : tag === TAG.DP ? maskReceiptBlock(value) : value;
-    pos += 6 + len;
+    pos = end;
   }
   return fields;
 }
@@ -436,10 +459,9 @@ export function isCompleteMessage(buf: string): boolean {
   while (pos < buf.length) {
     if (buf[pos] === "!" || buf[pos] === "?") return true;
     if (pos + 6 > buf.length) return false;
-    const tag = buf.slice(pos, pos + 3);
-    const lenStr = buf.slice(pos + 3, pos + 6);
-    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr)) return /[!?]$/.test(buf);
-    pos += 6 + Number(lenStr);
+    const end = fieldEnd(buf, pos);
+    if (end < 0) return /[!?]$/.test(buf);
+    pos = end;
   }
   return false;
 }
@@ -459,10 +481,9 @@ export function extractLastMessage(raw: string): string {
       start = ++pos;
       continue;
     }
-    const tag = data.slice(pos, pos + 3);
-    const lenStr = data.slice(pos + 3, pos + 6);
-    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || pos + 6 + Number(lenStr) > data.length) break;
-    pos += 6 + Number(lenStr);
+    const end = fieldEnd(data, pos);
+    if (end < 0 || end > data.length) break;
+    pos = end;
   }
   if (pos > start) messages.push(data.slice(start, pos));
   return messages.length === 0 ? "" : messages[messages.length - 1] + "!";

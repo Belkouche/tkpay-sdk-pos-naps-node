@@ -1,3 +1,4 @@
+import { parseReceipt } from "../src/protocol/receipt.js";
 import { describe, it, expect } from "vitest";
 import {
   tlv,
@@ -310,6 +311,26 @@ describe("isCompleteMessage", () => {
   it("falls back to a trailing terminator for non-TLV data", () => {
     expect(isCompleteMessage("garbage!")).toBe(true);
     expect(isCompleteMessage("garbage")).toBe(false);
+  });
+});
+
+// A receipt longer than 999 chars, as the Lane3600 sends it: DP declared 999 long.
+const longLine = (n: number) => `*030002${String(n).padStart(2, "0")}031001S032001G033040${"X".repeat(40)}`;
+const longDp = Array.from({ length: 25 }, (_, n) => longLine(n)).join("") + "?"; // 25 × 66 + 1 = 1651 chars
+const longFrame = "001003108" + "010999" + longDp + "013003000" + "!";
+
+describe("DP longer than 999 (Lane3600 caps the length at 999)", () => {
+  it("parses the whole receipt and the fields after it", () => {
+    const f = parseMessage(longFrame);
+    expect(f[TAG.DP]).toBe(longDp);
+    expect(f[TAG.CR]).toBe("000");
+    expect(parseReceipt(f[TAG.DP])).toHaveLength(25);
+  });
+  it("is not complete until the receipt and the terminator have arrived", () => {
+    expect(isCompleteMessage(longFrame.slice(0, 1200))).toBe(false);
+    expect(isCompleteMessage(longFrame.slice(0, -1))).toBe(false);
+    expect(isCompleteMessage(longFrame)).toBe(true);
+    expect(extractLastMessage(longFrame)).toBe(longFrame);
   });
 });
 
