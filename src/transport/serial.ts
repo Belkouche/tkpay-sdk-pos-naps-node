@@ -1,5 +1,6 @@
 import type { ResolvedOptions } from "../models.js";
 import { findIngenicoPort } from "../discovery.js";
+import { isCompleteMessage } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -126,10 +127,10 @@ export class SerialTransport implements Transport {
       const onData = (chunk: Buffer) => {
         this.lastRxAt = Date.now();
         buf += chunk.toString("utf8");
-        // The frame ends when the data received so far ends with a terminator ('!' v2, '?' v1;
-        // either one, as in the C# reader). A '!' or '?' inside receipt text must not cut the
-        // reply short: the rest would be lost, or read as the next reply.
-        if (/[!?]$/.test(buf)) {
+        // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
+        // lines end with '?') must not cut the reply short: the rest would be lost, or read as
+        // the next reply.
+        if (isCompleteMessage(buf)) {
           finish(null, buf);
         } else {
           if (drainTimer) clearTimeout(drainTimer);

@@ -117,6 +117,18 @@ describe("serial transport quiet time", () => {
     expect(await reply).toBe("001003108010014MERCI! A BIENT013003000!");
   });
 
+  it("does not end a reply at a receipt line's '?' that happens to end a read", async () => {
+    vi.useFakeTimers();
+    const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", protocolVersion: "v2" }));
+    await t.connect();
+    const port = ports.at(-1)!;
+    const reply = t.sendReceive("001003008", 5_000);
+    await vi.advanceTimersByTimeAsync(32_000);
+    port.reply("001003108010012LINE1?LINE2?");  // read stops right after a DP line end
+    port.reply("013003000!");
+    expect(await reply).toBe("001003108010012LINE1?LINE2?013003000!");
+  });
+
   it("treats only TM 002 and TM 004 as confirmations", () => {
     expect(isPhase2("001003002003007")).toBe(true);
     expect(isPhase2("001003004003007")).toBe(true);

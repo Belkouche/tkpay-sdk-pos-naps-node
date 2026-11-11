@@ -1,5 +1,6 @@
 import net from "node:net";
 import type { ResolvedOptions } from "../models.js";
+import { isCompleteMessage } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -71,10 +72,10 @@ export class TcpTransport implements Transport {
 
       const onData = (chunk: Buffer) => {
         buf += chunk.toString("utf8");
-        // The frame ends when the data received so far ends with a terminator ('!' v2, '?' v1;
-        // either one, as in the C# reader). A '!' or '?' inside receipt text must not cut the
-        // reply short: the rest would be lost, or read as the next reply.
-        if (/[!?]$/.test(buf)) {
+        // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
+        // lines end with '?') must not cut the reply short: the rest would be lost, or read as
+        // the next reply.
+        if (isCompleteMessage(buf)) {
           finish(null, buf);
         } else {
           // No terminator yet — arm a 1s silence fallback (some replies carry none).

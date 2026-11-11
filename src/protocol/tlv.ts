@@ -423,6 +423,25 @@ function maskReceiptBlock(dp: string): string {
 }
 
 /**
+ * True once `buf` holds a complete message: walking the fields by their length lands on a
+ * '!'/'?' terminator. A terminator inside a value (receipt lines end with '?') is data, so a read
+ * that happens to stop right after one is not taken as the end. If the data is not TLV, a
+ * trailing terminator is accepted as the end.
+ */
+export function isCompleteMessage(buf: string): boolean {
+  let pos = 0;
+  while (pos < buf.length) {
+    if (buf[pos] === "!" || buf[pos] === "?") return true;
+    if (pos + 6 > buf.length) return false;
+    const tag = buf.slice(pos, pos + 3);
+    const lenStr = buf.slice(pos + 3, pos + 6);
+    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr)) return /[!?]$/.test(buf);
+    pos += 6 + Number(lenStr);
+  }
+  return false;
+}
+
+/**
  * Return the last message from a raw stream that may hold several. Fields are walked by their
  * length, so only a '!'/'?' at a field boundary separates messages; one inside a value is data.
  */

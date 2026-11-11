@@ -12,6 +12,7 @@ import {
   maskPan,
   describeResponse,
   extractLastMessage,
+  isCompleteMessage,
   RESPONSE_CODES,
   TM,
   TAG,
@@ -295,6 +296,20 @@ describe("extractLastMessage", () => {
     const msg = "001003103" + "010006MERCI!" + "013003000";
     expect(extractLastMessage(msg + "!")).toBe(msg + "!");
     expect(extractLastMessage("001003109!" + msg + "!")).toBe(msg + "!");
+  });
+});
+
+describe("isCompleteMessage", () => {
+  it("is complete only at a terminator on a field boundary", () => {
+    expect(isCompleteMessage("001003109013003000!")).toBe(true);
+    expect(isCompleteMessage("001003109013003000")).toBe(false);
+    expect(isCompleteMessage("001003108010012LINE1?LINE2?")).toBe(false); // '?' inside the DP value
+    expect(isCompleteMessage("001003108010012LINE1?LINE2?013003000?")).toBe(true);
+    expect(isCompleteMessage("00100")).toBe(false);
+  });
+  it("falls back to a trailing terminator for non-TLV data", () => {
+    expect(isCompleteMessage("garbage!")).toBe(true);
+    expect(isCompleteMessage("garbage")).toBe(false);
   });
 });
 

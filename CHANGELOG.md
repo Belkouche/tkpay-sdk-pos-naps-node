@@ -33,10 +33,11 @@ after the port opens, so the first request of a session always answered at 30.1 
 - **fix (USB serial):** after a timeout or error the port is closed, so a reply that
   arrives late is never read as the answer to the next request. The next call reopens
   the port (and waits again for the Lane3600).
-- **fix (reader, USB and TCP):** a reply ends only when the data received ends with a
-  terminator (`!` or `?`), as in the C# reader. It used to stop at the first `!` anywhere, so a
-  `!` inside receipt text cut the reply short; on the kept-open serial port the rest could be
-  read as the next reply.
+- **fix (reader, USB and TCP):** a reply ends at a `!` / `?` terminator found on a field
+  boundary (fields walked by their length). It used to stop at the first `!` anywhere, so a `!`
+  inside receipt text cut the reply short, and the rest could be read as the next reply on the
+  kept-open serial port. Receipt lines end with `?`, so a read that stops right after one no
+  longer ends the reply either.
 - **fix (parser):** `parseMessage` and `extractLastMessage` walk the fields by their length and
   treat `!` / `?` as an end of message only at a field boundary. They used to stop or split at
   the first one anywhere, dropping the fields after a receipt that contained `!`.
