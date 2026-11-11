@@ -260,10 +260,18 @@ describe("NapsClient.cancel", () => {
 });
 
 describe("NapsClient.networkTest / referencing", () => {
-  it("network test maps CR=000 to success", async () => {
+  it("network test maps CR=000 to success (USB serial)", async () => {
+    const t = new FakeTransport([common("109", "000")]);
+    const res = await new NapsClient({ transport: "serial", serialPath: "/dev/x" }, t).networkTest();
+    expect(res.isSuccess).toBe(true);
+  });
+
+  it("network test over TCP sends nothing and returns UNSUPPORTED (Sunmi NapsPay answers 902)", async () => {
     const t = new FakeTransport([common("109", "000")]);
     const res = await client(t).networkTest();
-    expect(res.isSuccess).toBe(true);
+    expect(res.isSuccess).toBe(false);
+    expect(res.responseCode).toBe("UNSUPPORTED");
+    expect(t.sent).toHaveLength(0);
   });
 
   it("referencing sends TIDE and echoes the parameter set", async () => {
@@ -283,7 +291,7 @@ describe("NapsClient.networkTest / referencing", () => {
 describe("NapsClient management operations", () => {
   it("send the client's NCAI and a fresh sequence number", async () => {
     const t = new FakeTransport([common("109", "000"), common("110", "000"), common("112", "000")]);
-    const c = new NapsClient({ transport: "tcp", tcpHost: "127.0.0.1", registerId: "02", cashierId: "00005" }, t);
+    const c = new NapsClient({ transport: "serial", serialPath: "/dev/x", registerId: "02", cashierId: "00005" }, t);
     await c.networkTest();
     await c.totals();
     await c.resetPinPad();

@@ -10,6 +10,10 @@ after the port opens, so the first request of a session always answered at 30.1 
   after the terminal had stopped waiting for TM 002: it showed "attente validation caisse",
   timed out, and the authorised payment was not recorded. Keep the client connected between
   transactions so the wait happens once.
+- **fix (network test):** `networkTest()` is USB serial only. Over TCP it sends nothing and
+  returns `responseCode: "UNSUPPORTED"`: the NapsPay app on a Sunmi P2 answers TM 009 with
+  TM 101 / CR 902 (it only handles payments and voids over the ECR link), and a test frame
+  crashed the app.
 - **fix (timeouts):** `testTimeoutMs` now defaults to 90 s (was 30 s). At 30 s, `cancel()`
   gave up on TM 003 just before the terminal answered, and the terminal then stayed on its
   void screen waiting for a TM 004 that never came.

@@ -229,11 +229,13 @@ returns `responseCode: "TIMEOUT"`.
 Each opens (or reuses) the connection, sends one frame with your NCAI (and a fresh sequence number,
 except settlement) and reads one response.
 
-**Network test** (TM 009) — checks the terminal ↔ host link:
+**Network test** (TM 009) — checks the terminal ↔ host link. USB serial only: over TCP nothing
+is sent and `responseCode` is `"UNSUPPORTED"`, because the NapsPay app on Sunmi terminals does not
+implement TM 009 (it answers 902) and a test frame crashed the app on a Sunmi P2.
 
 ```ts
 import { NapsClient } from "@tkpay/naps";
-const naps = new NapsClient({ tcpHost: "127.0.0.1" });
+const naps = new NapsClient({ transport: "serial" });
 const test = await naps.networkTest(); // { isSuccess, responseCode, message }
 console.log(test.isSuccess ? "Network OK" : test.message);
 naps.disconnect();
@@ -466,7 +468,7 @@ after opening waits until the port has been open 32 s. A payment sent earlier wo
 approval too late to confirm. Connect once when the app starts and keep the client connected
 between transactions, so only the first request waits.
 
-**Run a network test when the point-of-sale app starts.** It takes that wait while no customer
+**Run a network test when the point-of-sale app starts (USB only).** It takes that wait while no customer
 is waiting, checks the terminal and the bank host, and leaves the port open, so the first sale goes
 straight to the card prompt:
 

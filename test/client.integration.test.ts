@@ -59,10 +59,10 @@ function useEmulator(args: string[] = []): void {
 suite("NapsClient ⇄ emulator (TCP, v2)", () => {
   useEmulator();
 
-  it("network test succeeds", async () => {
+  it("network test is not sent over TCP", async () => {
     const res = await newClient().networkTest();
-    expect(res.isSuccess).toBe(true);
-    expect(res.responseCode).toBe("000");
+    expect(res.isSuccess).toBe(false);
+    expect(res.responseCode).toBe("UNSUPPORTED");
   });
 
   it("completes a two-phase payment", async () => {
@@ -123,7 +123,7 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
 
   it("responds fast (no drain delay → '!' terminator honoured)", async () => {
     const t0 = Date.now();
-    await newClient().networkTest();
+    await newClient().totals();
     expect(Date.now() - t0).toBeLessThan(800); // would be >1000ms if it hit the drain fallback
   });
 });
