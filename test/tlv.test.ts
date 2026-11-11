@@ -327,6 +327,17 @@ describe("DP longer than 999 (Lane3600 caps the length at 999)", () => {
     expect(f[TAG.CR]).toBe("000");
     expect(parseReceipt(f[TAG.DP])).toHaveLength(25);
   });
+  it("keeps a DP that is really 999 long (no '?') from swallowing the next fields", () => {
+    let dp = "";
+    while (999 - dp.length > 75) dp += longLine(dp.length % 100);
+    const rest = 999 - dp.length - 7;
+    dp += "*033" + String(rest).padStart(3, "0") + "X".repeat(rest); // exactly 999 chars, no end marker
+    const f = parseMessage("001003108" + "010999" + dp + "013003000" + "0070165167940000003315" + "!");
+    expect(f[TAG.DP]).toBe(dp);
+    expect(f[TAG.CR]).toBe("000");
+    expect(f[TAG.NCAR]).toBe("516794******3315");
+  });
+
   it("is not complete until the receipt and the terminator have arrived", () => {
     expect(isCompleteMessage(longFrame.slice(0, 1200))).toBe(false);
     expect(isCompleteMessage(longFrame.slice(0, -1))).toBe(false);

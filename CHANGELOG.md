@@ -45,6 +45,8 @@ after the port opens, so the first request of a session always answered at 30.1 
   (a duplicate holding both copies is ~2,150 chars). A DP declared 999 long now ends at its own
   `?` end marker, found by walking its sub-tags; it used to be cut at 999 chars, losing most of
   the second copy.
+  A DP really 999 long (no `?`) stops at its first non-receipt sub-tag (not 030–039), so it
+  never swallows the fields after it.
 - **fix (USB serial, accented text):** the Lane3600 counts field and DP sub-tag lengths in UTF-8
   bytes. A multi-byte character in a receipt line (it sends `ç` as a 3-byte replacement
   character) made the character-based walk read 2 characters of the next line into it. Serial

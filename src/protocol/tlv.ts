@@ -331,7 +331,7 @@ export function buildSettlement(ncai = "0100001"): string {
  * can be past `data.length` when the field is not fully received yet. The Ingenico Lane3600 caps
  * the DP length at 999 when the receipt is longer (a duplicate with both copies is ~2,150
  * chars), so a DP declared 999 long ends at its own '?' end marker, found by walking its
- * sub-tags and '*' line separators.
+ * receipt sub-tags (030–039) and '*' line separators; another tag ends it at the declared 999.
  */
 function fieldEnd(data: string, pos: number): number {
   const tag = data.slice(pos, pos + 3);
@@ -345,7 +345,8 @@ function fieldEnd(data: string, pos: number): number {
     if (data[i] === "?") return Math.max(i + 1, declaredEnd);
     const sub = data.slice(i, i + 6);
     if (sub.length < 6) return data.length + 1; // rest of the receipt not received yet
-    if (!/^\d{6}$/.test(sub)) return declaredEnd;
+    // Receipt sub-tags are 030–039; anything else is a top-level field, so the DP was really 999.
+    if (!/^03\d{4}$/.test(sub)) return declaredEnd;
     i += 6 + Number(sub.slice(3));
   }
   return data.length + 1;
