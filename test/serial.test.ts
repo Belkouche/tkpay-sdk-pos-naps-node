@@ -129,6 +129,17 @@ describe("serial transport quiet time", () => {
     expect(await reply).toBe("001003108010012LINE1?LINE2?013003000!");
   });
 
+  it("rejects a reply larger than 64 KB", async () => {
+    vi.useFakeTimers();
+    const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", protocolVersion: "v2" }));
+    await t.connect();
+    const port = ports.at(-1)!;
+    const reply = expect(t.sendReceive("001003008", 5_000)).rejects.toThrow(/larger than/);
+    await vi.advanceTimersByTimeAsync(32_000);
+    port.reply("0".repeat(64 * 1024 + 1));
+    await reply;
+  });
+
   it("treats only TM 002 and TM 004 as confirmations", () => {
     expect(isPhase2("001003002003007")).toBe(true);
     expect(isPhase2("001003004003007")).toBe(true);

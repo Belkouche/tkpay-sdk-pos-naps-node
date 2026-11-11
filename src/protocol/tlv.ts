@@ -422,6 +422,9 @@ function maskReceiptBlock(dp: string): string {
   return out;
 }
 
+/** Largest reply accepted, in characters (replies seen are ~2 KB). */
+export const MAX_RESPONSE_CHARS = 64 * 1024;
+
 /**
  * True once `buf` holds a complete message: walking the fields by their length lands on a
  * '!'/'?' terminator. A terminator inside a value (receipt lines end with '?') is data, so a read

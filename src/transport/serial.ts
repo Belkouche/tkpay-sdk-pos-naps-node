@@ -1,6 +1,6 @@
 import type { ResolvedOptions } from "../models.js";
 import { findIngenicoPort } from "../discovery.js";
-import { isCompleteMessage } from "../protocol/tlv.js";
+import { isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -130,7 +130,9 @@ export class SerialTransport implements Transport {
         // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
         // lines end with '?') must not cut the reply short: the rest would be lost, or read as
         // the next reply.
-        if (isCompleteMessage(buf)) {
+        if (buf.length > MAX_RESPONSE_CHARS) {
+          finish(new Error(`response larger than ${MAX_RESPONSE_CHARS} characters`));
+        } else if (/[!?]$/.test(buf) && isCompleteMessage(buf)) {
           finish(null, buf);
         } else {
           if (drainTimer) clearTimeout(drainTimer);

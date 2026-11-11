@@ -1,6 +1,6 @@
 import net from "node:net";
 import type { ResolvedOptions } from "../models.js";
-import { isCompleteMessage } from "../protocol/tlv.js";
+import { isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -75,7 +75,9 @@ export class TcpTransport implements Transport {
         // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
         // lines end with '?') must not cut the reply short: the rest would be lost, or read as
         // the next reply.
-        if (isCompleteMessage(buf)) {
+        if (buf.length > MAX_RESPONSE_CHARS) {
+          finish(new Error(`response larger than ${MAX_RESPONSE_CHARS} characters`));
+        } else if (/[!?]$/.test(buf) && isCompleteMessage(buf)) {
           finish(null, buf);
         } else {
           // No terminator yet — arm a 1s silence fallback (some replies carry none).
