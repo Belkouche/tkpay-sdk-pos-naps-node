@@ -466,6 +466,15 @@ after opening waits until the port has been open 32 s. A payment sent earlier wo
 approval too late to confirm. Connect once when the app starts and keep the client connected
 between transactions, so only the first request waits.
 
+**Run a network test when the point-of-sale app starts.** It takes that wait while no customer
+is waiting, checks the terminal and the bank host, and leaves the port open, so the first sale goes
+straight to the card prompt:
+
+```ts
+const naps = new NapsClient({ transport: "serial" });
+await naps.networkTest(); // at app start: ~30 s on a Lane3600 over USB
+```
+
 **Protocol version.** `protocolVersion` selects the expected terminator: `"v2"` (`!`, NapsPay
 v5.4.4) or `"v1"` (`?`, legacy). It defaults to `"v2"` for TCP and `"v1"` for serial; an explicit
 value wins. A mismatch still works, because the reader accepts either terminator.
