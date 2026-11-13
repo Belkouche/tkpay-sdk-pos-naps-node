@@ -122,7 +122,7 @@ describe("NapsClient.pay", () => {
     expect(res.responseCode).toBe("TIMEOUT");
   });
 
-  it("reports a confirmation timeout but keeps the approval", async () => {
+  it("reports a confirmation timeout as declined, keeping the STAN", async () => {
     const phase1 = common("101", "000", tlv(TAG.STAN, "703062"));
     const t = new FakeTransport([
       phase1,
@@ -131,8 +131,18 @@ describe("NapsClient.pay", () => {
       },
     ]);
     const res = await client(t).pay(12.5);
-    expect(res.isSuccess).toBe(true);
-    expect(res.responseMessage).toContain("Confirmation timed out");
+    expect(res.isSuccess).toBe(false);
+    expect(res.responseCode).toBe("TIMEOUT");
+    expect(res.stan).toBe("703062");
+    expect(res.responseMessage).toContain("result unknown");
+  });
+
+  it("reports an approval without a STAN as declined, without confirming", async () => {
+    const t = new FakeTransport([common("101", "000")]);
+    const res = await client(t).pay(12.5);
+    expect(res.isSuccess).toBe(false);
+    expect(res.responseCode).toBe("INVALID_RESPONSE");
+    expect(t.sent).toHaveLength(1);
   });
 });
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **change (payment):** a payment approved at TM 101 whose confirmation reply (TM 102) never
+  arrives is now reported as declined: `isSuccess: false`, `responseCode: "TIMEOUT"`, with the
+  STAN, masked card number and merchant copy kept so the terminal's last ticket can be checked.
+  It used to be returned as an approval with `responseMessage: "Confirmation timed out"`. An
+  approved TM 101 without a STAN (no confirmation can be sent) is also declined
+  (`"INVALID_RESPONSE"`). Same behaviour in every TKpay SDK.
+
 ## v1.3.0 — Ingenico Lane3600 (USB) and Sunmi P2 (TCP) fixes
 
 Found on a live Lane3600 over USB. The terminal holds back every answer until about 30 s

@@ -99,7 +99,10 @@ export class NapsClient {
     // The TM 101 DP of an approved payment is the merchant copy.
     const approved = merchantCopy(mapResult(payFields, true));
     const stan = payFields[TAG.STAN];
-    if (!stan) return approved; // approved but no STAN → cannot confirm
+    // Approved but no STAN: no confirmation can be sent, so the terminal reverses the sale.
+    if (!stan) {
+      return { ...approved, isSuccess: false, responseCode: "INVALID_RESPONSE", responseMessage: "Approved without a STAN: not confirmed" };
+    }
 
     // Spec §4.2: echo MT/NCAR/DAEX from the approved payment.
     const confMsg = buildConfirmation(stan, {
@@ -132,8 +135,15 @@ export class NapsClient {
       }
       return result;
     } catch (e) {
+      // No TM 102: the outcome is unknown. Reported as declined, never as an approval; the STAN,
+      // masked card and merchant copy are kept so the terminal's last ticket can be checked.
       if (e instanceof TerminalTimeoutError) {
-        return { ...approved, responseMessage: "Confirmation timed out" };
+        return {
+          ...approved,
+          isSuccess: false,
+          responseCode: "TIMEOUT",
+          responseMessage: "Confirmation timed out: result unknown, check the terminal's last ticket",
+        };
       }
       throw e;
     }
