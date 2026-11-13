@@ -217,6 +217,22 @@ suite("NapsClient ⇄ emulator --mode void_480", () => {
   });
 });
 
+suite("NapsClient ⇄ emulator --mode no_confirm", () => {
+  useEmulator(["--mode", "no_confirm"]);
+
+  it("reports a payment without a TM 102 reply as declined, keeping the STAN", async () => {
+    const c = new NapsClient({ transport: "tcp", tcpHost: HOST, tcpPort: PORT, confirmationTimeoutMs: 3000 });
+    try {
+      const r = await c.pay(10);
+      expect(r).toMatchObject({ isSuccess: false, responseCode: "TIMEOUT" });
+      expect(r.stan).toMatch(/^\d{6}$/);
+      expect(r.cardNumber).toBe("516794******3315");
+    } finally {
+      c.disconnect();
+    }
+  });
+});
+
 for (const mode of ["void_995", "void_no_confirm"]) {
   suite(`NapsClient ⇄ emulator --mode ${mode}`, () => {
     useEmulator(["--mode", mode]);

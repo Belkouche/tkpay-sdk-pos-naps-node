@@ -134,7 +134,8 @@ What `pay()` returns in each case:
 | TM 101 approved, TM 102 CR 000 | `true` | `000` | merchant + customer receipts |
 | TM 102 refused (e.g. 302, 482) | `false` | the TM 102 code | not an approval; with 482 the terminal has reversed the sale |
 | No TM 101 reply in `paymentTimeoutMs` | `false` | `"TIMEOUT"` | |
-| No TM 102 reply in `confirmationTimeoutMs` | `true` | approval code | `responseMessage` is `"Confirmation timed out"` — reconcile |
+| No TM 102 reply in `confirmationTimeoutMs` | `false` | `"TIMEOUT"` | outcome unknown: reported as declined, with `stan`, `cardNumber` and the merchant copy kept — check the terminal's last ticket |
+| TM 101 approved without a STAN | `false` | `"INVALID_RESPONSE"` | no TM 002 can be sent; the terminal reverses the sale |
 
 The result fields:
 
@@ -410,7 +411,7 @@ There are three kinds of outcome:
    | Operation | Timeout option (default) | On timeout |
    |---|---|---|
    | `pay()` TM 001 | `paymentTimeoutMs` (120 s) | returns `responseCode: "TIMEOUT"` |
-   | `pay()` TM 002 | `confirmationTimeoutMs` (40 s) | returns the approval, `responseMessage: "Confirmation timed out"` |
+   | `pay()` TM 002 | `confirmationTimeoutMs` (40 s) | returns `isSuccess: false`, `responseCode: "TIMEOUT"` (outcome unknown, STAN kept) |
    | `cancel()` TM 003 | `testTimeoutMs` (90 s) | returns `responseCode: "TIMEOUT"` |
    | `cancel()` TM 004 | `confirmationTimeoutMs` (40 s) | returns `isPending: true`, `responseCode: "TIMEOUT"` |
    | `networkTest()`, `totals()` | `testTimeoutMs` (90 s) | **throws** `TerminalTimeoutError` |
