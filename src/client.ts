@@ -205,15 +205,26 @@ export class NapsClient {
         };
       }
       const confDp = confFields?.[TAG.DP];
-      return {
+      const confLines = confDp ? parseReceipt(confDp) : undefined;
+      const done = {
         ...found,
         isSuccess: true,
         isCancelled: true,
         responseCode: confCr,
         stan: confFields?.[TAG.STAN] ?? found.stan,
-        customerReceiptText: confDp,
-        customerReceiptLines: confDp ? parseReceipt(confDp) : undefined,
       };
+      // Ingenico Lane3600: TM 103 has no DP and TM 104 carries the only void receipt (the
+      // merchant copy, "SIGNATURE CLIENT"). Otherwise TM 103 is the merchant copy, TM 104 the customer's.
+      if (!found.merchantReceiptText && confDp) {
+        return {
+          ...done,
+          receiptText: confDp,
+          receiptLines: confLines,
+          merchantReceiptText: confDp,
+          merchantReceiptLines: confLines,
+        };
+      }
+      return { ...done, customerReceiptText: confDp, customerReceiptLines: confLines };
     } catch (e) {
       if (e instanceof TerminalTimeoutError) {
         return { isSuccess: false, isCancelled: false, responseCode: "TIMEOUT", responseMessage: "Cancel request timed out" };
@@ -222,7 +233,19 @@ export class NapsClient {
     }
   }
 
+  /**
+   * Network test (TM 009). USB serial only: over TCP nothing is sent and the result has
+   * `responseCode: "UNSUPPORTED"`. The NapsPay app on Sunmi terminals does not implement TM 009
+   * (it answers TM 101 with CR 902), and a test frame crashed the app on a Sunmi P2.
+   */
   async networkTest(): Promise<TestResult> {
+    if (this.opts.transport !== "serial") {
+      return {
+        isSuccess: false,
+        responseCode: "UNSUPPORTED",
+        message: "Network test not supported over TCP (the terminal's payment app does not implement TM 009)",
+      };
+    }
     const resp = await this.transport.sendReceive(buildMessage(TM.NETWORK_TEST, this.managementFields()), this.opts.testTimeoutMs);
     const cr = parseMessage(resp)[TAG.CR];
     return { isSuccess: cr === "000", responseCode: cr, message: cr === "000" ? "Network OK" : `Network test failed: CR=${cr}` };
@@ -248,12 +271,12 @@ export class NapsClient {
   async duplicateReceipt(stan?: string): Promise<PaymentResult> {
     const extraFields: Array<[string, string]> = stan ? [[TAG.STAN, stan]] : [];
     const msg = buildMessage(TM.DUPLICATE, { ...this.managementFields(), extraFields });
-    const resp = await this.transport.sendReceive(msg, 15_000);
+    const resp = await this.transport.sendReceive(msg, this.opts.testTimeoutMs);
     return mapResult(parseMessage(resp), true);
   }
 
   async resetPinPad(): Promise<void> {
-    await this.transport.sendReceive(buildMessage(TM.RESET_PINPAD, this.managementFields()), 15_000);
+    await this.transport.sendReceive(buildMessage(TM.RESET_PINPAD, this.managementFields()), this.opts.testTimeoutMs);
   }
 
   /**

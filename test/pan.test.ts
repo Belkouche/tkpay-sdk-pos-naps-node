@@ -140,7 +140,7 @@ describe("card number masking", () => {
         throw new Error("connection closed before response");
       },
     };
-    const err = await client(t).networkTest().catch((e: Error) => e);
+    const err = await client(t).totals().catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
     expectNoFullPan(String(err) + (err as Error).stack);
   });

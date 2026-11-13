@@ -1,3 +1,4 @@
+import { parseReceipt } from "../src/protocol/receipt.js";
 import { describe, it, expect } from "vitest";
 import {
   tlv,
@@ -12,6 +13,8 @@ import {
   maskPan,
   describeResponse,
   extractLastMessage,
+  byteLengthsToCharLengths,
+  isCompleteMessage,
   RESPONSE_CODES,
   TM,
   TAG,
@@ -290,6 +293,83 @@ describe("extractLastMessage", () => {
   });
   it("returns empty for empty input", () => {
     expect(extractLastMessage("")).toBe("");
+  });
+  it("does not split at a '!' inside a receipt value", () => {
+    const msg = "001003103" + "010006MERCI!" + "013003000";
+    expect(extractLastMessage(msg + "!")).toBe(msg + "!");
+    expect(extractLastMessage("001003109!" + msg + "!")).toBe(msg + "!");
+  });
+});
+
+describe("isCompleteMessage", () => {
+  it("is complete only at a terminator on a field boundary", () => {
+    expect(isCompleteMessage("001003109013003000!")).toBe(true);
+    expect(isCompleteMessage("001003109013003000")).toBe(false);
+    expect(isCompleteMessage("001003108010012LINE1?LINE2?")).toBe(false); // '?' inside the DP value
+    expect(isCompleteMessage("001003108010012LINE1?LINE2?013003000?")).toBe(true);
+    expect(isCompleteMessage("00100")).toBe(false);
+  });
+  it("falls back to a trailing terminator for non-TLV data", () => {
+    expect(isCompleteMessage("garbage!")).toBe(true);
+    expect(isCompleteMessage("garbage")).toBe(false);
+  });
+});
+
+// A receipt longer than 999 chars, as the Lane3600 sends it: DP declared 999 long.
+const longLine = (n: number) => `*030002${String(n).padStart(2, "0")}031001S032001G033040${"X".repeat(40)}`;
+const longDp = Array.from({ length: 25 }, (_, n) => longLine(n)).join("") + "?"; // 25 × 66 + 1 = 1651 chars
+const longFrame = "001003108" + "010999" + longDp + "013003000" + "!";
+
+describe("DP longer than 999 (Lane3600 caps the length at 999)", () => {
+  it("parses the whole receipt and the fields after it", () => {
+    const f = parseMessage(longFrame);
+    expect(f[TAG.DP]).toBe(longDp);
+    expect(f[TAG.CR]).toBe("000");
+    expect(parseReceipt(f[TAG.DP])).toHaveLength(25);
+  });
+  it("keeps a DP that is really 999 long (no '?') from swallowing the next fields", () => {
+    let dp = "";
+    while (999 - dp.length > 75) dp += longLine(dp.length % 100);
+    const rest = 999 - dp.length - 7;
+    dp += "*033" + String(rest).padStart(3, "0") + "X".repeat(rest); // exactly 999 chars, no end marker
+    const f = parseMessage("001003108" + "010999" + dp + "013003000" + "0070165167940000003315" + "!");
+    expect(f[TAG.DP]).toBe(dp);
+    expect(f[TAG.CR]).toBe("000");
+    expect(f[TAG.NCAR]).toBe("516794******3315");
+  });
+
+  it("is not complete until the receipt and the terminator have arrived", () => {
+    expect(isCompleteMessage(longFrame.slice(0, 1200))).toBe(false);
+    expect(isCompleteMessage(longFrame.slice(0, -1))).toBe(false);
+    expect(isCompleteMessage(longFrame)).toBe(true);
+    expect(extractLastMessage(longFrame)).toBe(longFrame);
+  });
+});
+
+describe("byteLengthsToCharLengths (Lane3600 over USB counts bytes)", () => {
+  it("rewrites field and DP sub-tag lengths from bytes to characters", () => {
+    // "Copie Commerçé" is 14 chars but 16 UTF-8 bytes; the Lane declares 016.
+    const dpBytes = "*030002" + "01" + "033016" + "Copie Commerçé" + "*030002" + "02" + "033004" + "NEXT" + "?";
+    const frame = Buffer.from("001003108" + "010" + String(Buffer.byteLength(dpBytes)).padStart(3, "0") + dpBytes + "013003000!", "utf8");
+    const converted = byteLengthsToCharLengths(frame.toString("latin1"));
+    const lines = parseReceipt(parseMessage(converted)[TAG.DP]).map((l) => l.text);
+    expect(lines).toEqual(["Copie Commerçé", "NEXT"]);
+    expect(parseMessage(converted)[TAG.CR]).toBe("000");
+  });
+  it("leaves an ASCII frame unchanged", () => {
+    expect(byteLengthsToCharLengths(longFrame)).toBe(longFrame);
+  });
+});
+
+describe("parseMessage framing", () => {
+  it("keeps the fields after a receipt that contains '!' or '?'", () => {
+    const f = parseMessage("001003102" + "010007MERCI!?" + "013003000" + "008006000250!");
+    expect(f[TAG.DP]).toBe("MERCI!?");
+    expect(f[TAG.CR]).toBe("000");
+    expect(f[TAG.STAN]).toBe("000250");
+  });
+  it("stops at a terminator on a field boundary", () => {
+    expect(parseMessage("001003109013003000!013003999")[TAG.CR]).toBe("000");
   });
 });
 

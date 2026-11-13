@@ -167,6 +167,20 @@ describe("NapsClient.cancel", () => {
     expect(p2[TAG.STAN]).toBe("703062");
   });
 
+  it("returns the TM 104 receipt as the merchant copy when TM 103 has none (Ingenico Lane3600)", async () => {
+    const voidDp = "03000201031001S032001C033010ANNULATION";
+    const t = new FakeTransport([
+      common("103", "000", tlv(TAG.STAN, "000182")),
+      common("104", "000", tlv(TAG.STAN, "000182") + tlv(TAG.DP, voidDp)),
+    ]);
+    const res = await client(t).cancel("000182", 1);
+
+    expect(res).toMatchObject({ isSuccess: true, isCancelled: true });
+    expect(res.receiptLines?.[0].text).toBe("ANNULATION");
+    expect(res.merchantReceiptLines?.[0].text).toBe("ANNULATION");
+    expect(res.customerReceiptLines).toBeUndefined();
+  });
+
   it("TM 004 carries the TM 003 sequence in NS (not NSA) and echoes MT/DE/DATR/HETR from TM 103", async () => {
     const t = new FakeTransport([
       common("103", "000", tlv(TAG.STAN, "703062") + tlv(TAG.DATR, "10092026") + tlv(TAG.HETR, "101500")),
@@ -246,10 +260,18 @@ describe("NapsClient.cancel", () => {
 });
 
 describe("NapsClient.networkTest / referencing", () => {
-  it("network test maps CR=000 to success", async () => {
+  it("network test maps CR=000 to success (USB serial)", async () => {
+    const t = new FakeTransport([common("109", "000")]);
+    const res = await new NapsClient({ transport: "serial", serialPath: "/dev/x" }, t).networkTest();
+    expect(res.isSuccess).toBe(true);
+  });
+
+  it("network test over TCP sends nothing and returns UNSUPPORTED (Sunmi NapsPay answers 902)", async () => {
     const t = new FakeTransport([common("109", "000")]);
     const res = await client(t).networkTest();
-    expect(res.isSuccess).toBe(true);
+    expect(res.isSuccess).toBe(false);
+    expect(res.responseCode).toBe("UNSUPPORTED");
+    expect(t.sent).toHaveLength(0);
   });
 
   it("referencing sends TIDE and echoes the parameter set", async () => {
@@ -269,7 +291,7 @@ describe("NapsClient.networkTest / referencing", () => {
 describe("NapsClient management operations", () => {
   it("send the client's NCAI and a fresh sequence number", async () => {
     const t = new FakeTransport([common("109", "000"), common("110", "000"), common("112", "000")]);
-    const c = new NapsClient({ transport: "tcp", tcpHost: "127.0.0.1", registerId: "02", cashierId: "00005" }, t);
+    const c = new NapsClient({ transport: "serial", serialPath: "/dev/x", registerId: "02", cashierId: "00005" }, t);
     await c.networkTest();
     await c.totals();
     await c.resetPinPad();

@@ -327,28 +327,52 @@ export function buildSettlement(ncai = "0100001"): string {
 }
 
 /**
+ * End index (exclusive) of the field starting at `pos`, -1 if its header is not TLV. The result
+ * can be past `data.length` when the field is not fully received yet. The Ingenico Lane3600 caps
+ * the DP length at 999 when the receipt is longer (a duplicate with both copies is ~2,150
+ * chars), so a DP declared 999 long ends at its own '?' end marker, found by walking its
+ * receipt sub-tags (030–039) and '*' line separators; another tag ends it at the declared 999.
+ */
+function fieldEnd(data: string, pos: number): number {
+  const tag = data.slice(pos, pos + 3);
+  const lenStr = data.slice(pos + 3, pos + 6);
+  if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr)) return -1;
+  const declaredEnd = pos + 6 + Number(lenStr);
+  if (tag !== TAG.DP || lenStr !== "999") return declaredEnd;
+  let i = pos + 6;
+  while (i < data.length) {
+    if (data[i] === "*") { i++; continue; }
+    if (data[i] === "?") return Math.max(i + 1, declaredEnd);
+    const sub = data.slice(i, i + 6);
+    if (sub.length < 6) return data.length + 1; // rest of the receipt not received yet
+    // Receipt sub-tags are 030–039; anything else is a top-level field, so the DP was really 999.
+    if (!/^03\d{4}$/.test(sub)) return declaredEnd;
+    i += 6 + Number(sub.slice(3));
+  }
+  return data.length + 1;
+}
+
+/**
  * Parse a TLV string → { tag: value }. Stops at the first terminator ('!' v2, '?' v1)
  * so trailing receipt/noise after it is ignored. Card numbers are masked here (first 6 +
  * last 4 digits) — in NCAR (007) and inside the DP (010) receipt text — so the full
  * number never leaves this function.
  */
 export function parseMessage(raw: string): Record<string, string> {
-  let data = raw;
-  const term = data.search(/[!?]/);
-  if (term >= 0) data = data.slice(0, term);
-  data = data.trim();
+  const data = raw.trim();
 
+  // Fields are walked by their length, so a '!' or '?' inside a value (receipt text) is data;
+  // a terminator ends the message only where the next field would start.
   const fields: Record<string, string> = {};
   let pos = 0;
   while (pos + 6 <= data.length) {
+    if (data[pos] === "!" || data[pos] === "?") break;
+    const end = fieldEnd(data, pos);
+    if (end < 0 || end > data.length) break;
     const tag = data.slice(pos, pos + 3);
-    const lenStr = data.slice(pos + 3, pos + 6);
-    const len = Number(lenStr);
-    if (!/^\d{3}$/.test(tag) || !/^\d{3}$/.test(lenStr) || Number.isNaN(len)) break;
-    if (pos + 6 + len > data.length) break;
-    const value = data.slice(pos + 6, pos + 6 + len);
+    const value = data.slice(pos + 6, end);
     fields[tag] = tag === TAG.NCAR ? maskCardField(value) : tag === TAG.DP ? maskReceiptBlock(value) : value;
-    pos += 6 + len;
+    pos = end;
   }
   return fields;
 }
@@ -422,8 +446,86 @@ function maskReceiptBlock(dp: string): string {
   return out;
 }
 
-/** Return the last '!'/'?'-terminated message from a raw stream. */
+/** Largest reply accepted, in characters (replies seen are ~2 KB). */
+export const MAX_RESPONSE_CHARS = 64 * 1024;
+
+/**
+ * True once `buf` holds a complete message: walking the fields by their length lands on a
+ * '!'/'?' terminator. A terminator inside a value (receipt lines end with '?') is data, so a read
+ * that happens to stop right after one is not taken as the end. If the data is not TLV, a
+ * trailing terminator is accepted as the end.
+ */
+export function isCompleteMessage(buf: string): boolean {
+  let pos = 0;
+  while (pos < buf.length) {
+    if (buf[pos] === "!" || buf[pos] === "?") return true;
+    if (pos + 6 > buf.length) return false;
+    const end = fieldEnd(buf, pos);
+    if (end < 0) return /[!?]$/.test(buf);
+    pos = end;
+  }
+  return false;
+}
+
+const fromBytes = (latin1: string): string => Buffer.from(latin1, "latin1").toString("utf8");
+const lenField = (n: number): string => String(Math.min(n, 999)).padStart(3, "0");
+
+/**
+ * Rewrite a frame whose lengths count bytes into one whose lengths count characters. The
+ * Ingenico Lane3600 over USB counts UTF-8 bytes (a 3-byte character in a DP line made a
+ * character-based walk read 2 characters into the next line); the rest of the SDK counts
+ * characters, as the Sunmi does over TCP. `latin1` holds one character per received byte. Each
+ * value, and each DP sub-tag value, is decoded as UTF-8 and its length rewritten (DP still
+ * capped at 999, as the terminal sends it).
+ */
+export function byteLengthsToCharLengths(latin1: string): string {
+  let out = "";
+  let pos = 0;
+  while (pos < latin1.length && latin1[pos] !== "!" && latin1[pos] !== "?") {
+    const end = fieldEnd(latin1, pos);
+    if (end < 0 || end > latin1.length) break;
+    const tag = latin1.slice(pos, pos + 3);
+    const value = tag === TAG.DP ? dpBytesToChars(latin1.slice(pos + 6, end)) : fromBytes(latin1.slice(pos + 6, end));
+    out += tag + lenField(value.length) + value;
+    pos = end;
+  }
+  return out + fromBytes(latin1.slice(pos));
+}
+
+function dpBytesToChars(dp: string): string {
+  let out = "";
+  let i = 0;
+  while (i < dp.length) {
+    if (dp[i] === "*" || dp[i] === "?") { out += dp[i++]; continue; }
+    const sub = dp.slice(i, i + 6);
+    const end = i + 6 + Number(sub.slice(3));
+    if (!/^\d{6}$/.test(sub) || end > dp.length) break;
+    const value = fromBytes(dp.slice(i + 6, end));
+    out += sub.slice(0, 3) + lenField(value.length) + value;
+    i = end;
+  }
+  return out + fromBytes(dp.slice(i));
+}
+
+/**
+ * Return the last message from a raw stream that may hold several. Fields are walked by their
+ * length, so only a '!'/'?' at a field boundary separates messages; one inside a value is data.
+ */
 export function extractLastMessage(raw: string): string {
-  const parts = raw.split(/[!?]/).filter((p) => p.length > 0);
-  return parts.length === 0 ? "" : parts[parts.length - 1] + "!";
+  const data = raw.trim();
+  const messages: string[] = [];
+  let start = 0;
+  let pos = 0;
+  while (pos < data.length) {
+    if (data[pos] === "!" || data[pos] === "?") {
+      if (pos > start) messages.push(data.slice(start, pos));
+      start = ++pos;
+      continue;
+    }
+    const end = fieldEnd(data, pos);
+    if (end < 0 || end > data.length) break;
+    pos = end;
+  }
+  if (pos > start) messages.push(data.slice(start, pos));
+  return messages.length === 0 ? "" : messages[messages.length - 1] + "!";
 }

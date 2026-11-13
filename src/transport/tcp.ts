@@ -1,5 +1,6 @@
 import net from "node:net";
 import type { ResolvedOptions } from "../models.js";
+import { isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
@@ -11,14 +12,12 @@ export class TcpTransport implements Transport {
   private readonly host: string;
   private readonly port: number;
   private readonly connectTimeoutMs: number;
-  private readonly terminator: string;
 
   constructor(opts: ResolvedOptions) {
     if (!opts.tcpHost) throw new Error("tcpHost is required for the TCP transport");
     this.host = opts.tcpHost;
     this.port = opts.tcpPort;
     this.connectTimeoutMs = opts.tcpConnectTimeoutMs;
-    this.terminator = opts.protocolVersion === "v1" ? "?" : "!";
   }
 
   get isConnected(): boolean {
@@ -73,16 +72,15 @@ export class TcpTransport implements Transport {
 
       const onData = (chunk: Buffer) => {
         buf += chunk.toString("utf8");
-        let idx = buf.indexOf(this.terminator);
-        // A chunk ending in the other generation's terminator also ends the frame, so a
-        // v1/v2 mismatch skips the 1s silence fallback (matches the canonical C# reader).
-        if (idx < 0 && /[!?]$/.test(buf)) idx = buf.length - 1;
-        if (idx >= 0) {
-          // Return up to and including the terminator; the parser stops there.
-          finish(null, buf.slice(0, idx + 1));
+        // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
+        // lines end with '?') must not cut the reply short: the rest would be lost, or read as
+        // the next reply.
+        if (buf.length > MAX_RESPONSE_CHARS) {
+          finish(new Error(`response larger than ${MAX_RESPONSE_CHARS} characters`));
+        } else if (/[!?]$/.test(buf) && isCompleteMessage(buf)) {
+          finish(null, buf);
         } else {
-          // No terminator yet — arm a 1s silence fallback (defends against a v1
-          // terminal talking to a v2 client or vice-versa).
+          // No terminator yet — arm a 1s silence fallback (some replies carry none).
           if (drainTimer) clearTimeout(drainTimer);
           drainTimer = setTimeout(() => finish(null, buf), 1000);
         }

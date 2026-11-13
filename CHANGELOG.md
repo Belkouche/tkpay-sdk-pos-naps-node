@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased — Ingenico Lane3600 fixes
+
+Found on a live Lane3600 over USB. The terminal holds back every answer until about 30 s
+after the port opens, so the first request of a session always answered at 30.1 s.
+
+- **fix (USB serial, payment confirmation):** the first frame after the port opens waits until
+  the port has been open 32 s. When a payment was the first frame, its TM 101 arrived 30 s late,
+  after the terminal had stopped waiting for TM 002: it showed "attente validation caisse",
+  timed out, and the authorised payment was not recorded. Keep the client connected between
+  transactions so the wait happens once.
+- **fix (network test):** `networkTest()` is USB serial only. Over TCP it sends nothing and
+  returns `responseCode: "UNSUPPORTED"`: the NapsPay app on a Sunmi P2 answers TM 009 with
+  TM 101 / CR 902 (it only handles payments and voids over the ECR link), and a test frame
+  crashed the app.
+- **fix (timeouts):** `testTimeoutMs` now defaults to 90 s (was 30 s). At 30 s, `cancel()`
+  gave up on TM 003 just before the terminal answered, and the terminal then stayed on its
+  void screen waiting for a TM 004 that never came.
+- **fix (timeouts):** `duplicateReceipt()` and `resetPinPad()` use `testTimeoutMs` instead
+  of a fixed 15 s, which was too short for the Lane3600.
+- **fix (void receipt):** when TM 103 carries no receipt, as on the Lane3600, `cancel()` returns
+  the TM 104 receipt (the only void receipt, "SIGNATURE CLIENT") as `merchantReceiptLines` and
+  `receiptLines` instead of `customerReceiptLines`. Terminals that send a receipt with TM 103 are
+  unchanged.
+- **fix (USB serial, back-to-back operations):** after a reply the Lane3600 keeps showing or
+  printing the result for a moment, and a request arriving then is lost (found with the C# SDK:
+  a void sent right after a payment got no reply, and a payment sent 0.5 s after a network test
+  was refused with CR 100 without a card prompt). A request that starts a new operation now
+  waits 3 s after the terminal's last reply; the confirmations (TM 002, TM 004) wait 0.5 s.
+- **change (USB serial):** the port opens with DTR/RTS asserted and keeps them on close
+  (`hupcl: false`), and every frame ends with the protocol terminator (`!` v2, `?` v1).
+- **fix (USB serial):** after a timeout or error the port is closed, so a reply that
+  arrives late is never read as the answer to the next request. The next call reopens
+  the port (and waits again for the Lane3600).
+- **fix (reader, USB and TCP):** a reply ends at a `!` / `?` terminator found on a field
+  boundary (fields walked by their length). It used to stop at the first `!` anywhere, so a `!`
+  inside receipt text cut the reply short, and the rest could be read as the next reply on the
+  kept-open serial port. Receipt lines end with `?`, so a read that stops right after one no
+  longer ends the reply either.
+- **fix (parser):** `parseMessage` and `extractLastMessage` walk the fields by their length and
+  treat `!` / `?` as an end of message only at a field boundary. They used to stop or split at
+  the first one anywhere, dropping the fields after a receipt that contained `!`.
+- **fix (long receipts):** the Lane3600 writes 999 as the DP length when the receipt is longer
+  (a duplicate holding both copies is ~2,150 chars). A DP declared 999 long now ends at its own
+  `?` end marker, found by walking its sub-tags; it used to be cut at 999 chars, losing most of
+  the second copy.
+  A DP really 999 long (no `?`) stops at its first non-receipt sub-tag (not 030–039), so it
+  never swallows the fields after it.
+- **fix (USB serial, accented text):** the Lane3600 counts field and DP sub-tag lengths in UTF-8
+  bytes. A multi-byte character in a receipt line (it sends `ç` as a 3-byte replacement
+  character) made the character-based walk read 2 characters of the next line into it. Serial
+  replies are now read byte for byte and converted to character lengths before parsing. TCP
+  (Sunmi, whose lengths count characters) is unchanged.
+- **docs:** on the Lane3600 only the last transaction can be reprinted; a duplicate for a given
+  STAN answers CR 381.
+- **change (USB serial):** `protocolVersion` now defaults to `"v2"` over USB too (was `"v1"`).
+  The Lane3600 ends every reply with `!` and was only verified with `!`-terminated requests; a
+  `?`-terminated request was never tested. Set `"v1"` explicitly for a legacy terminal.
+- **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
+  already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
+  unhandled "Port is not open" error.
+
 ## v1.2.1 — card number masking
 
 - **fix (card number masking):** card numbers are masked (first 6 + last 4 digits) in
