@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3.1 — lost confirmation is declined
 
 - **change (payment):** a payment approved at TM 101 whose confirmation reply (TM 102) never
   arrives is now reported as declined: `isSuccess: false`, `responseCode: "TIMEOUT"`, with the
