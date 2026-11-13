@@ -144,7 +144,8 @@ export class NapsClient {
    * Two-phase on the same connection (v2 §4.3–4.4): TM 003 → 103 CR=000 only means the
    * transaction was found; TM 004 → 104 executes the reversal (CR 000/480 = completed).
    * No TM 104 reply, or CR=995, yields `isPending: true` (not a success) with the STAN
-   * and the TM 103 merchant receipt — verify with `duplicateReceipt(stan)`.
+   * — verify with `duplicateReceipt(stan)`. Live terminals send no receipt with TM 103;
+   * the TM 104 receipt is returned as the merchant copy.
    * @param originalSequence NS of the payment to void, sent as NSA (005) on TM 003.
    */
   async cancel(stan: string, amountMad?: number, originalSequence?: string): Promise<PaymentResult> {
@@ -213,8 +214,8 @@ export class NapsClient {
         responseCode: confCr,
         stan: confFields?.[TAG.STAN] ?? found.stan,
       };
-      // Ingenico Lane3600: TM 103 has no DP and TM 104 carries the only void receipt (the
-      // merchant copy, "SIGNATURE CLIENT"). Otherwise TM 103 is the merchant copy, TM 104 the customer's.
+      // Live terminals (Sunmi P2, Lane3600): TM 103 has no DP and TM 104 carries the only void
+      // receipt, the merchant copy. Otherwise TM 103 is the merchant copy, TM 104 the customer's.
       if (!found.merchantReceiptText && confDp) {
         return {
           ...done,

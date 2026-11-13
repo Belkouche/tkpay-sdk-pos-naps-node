@@ -85,10 +85,10 @@ export interface PaymentResult {
   /** DP (010) of the first response, as sent: the merchant copy on payments/voids, the decline or duplicate receipt otherwise. */
   receiptText?: string;
   receiptLines?: ReceiptLine[];
-  /** Merchant copy ("Copie Commercant"): DP of TM 101 (payment) or TM 103 (void). */
+  /** Merchant copy ("Copie Commerçant"): DP of TM 101 (payment), or of TM 104 on a void (TM 103 if the terminal sends one there). */
   merchantReceiptText?: string;
   merchantReceiptLines?: ReceiptLine[];
-  /** Customer copy ("Copie Client"): DP of TM 102 (payment) or TM 104 (void). */
+  /** Customer copy ("Copie Client"): DP of TM 102 (payment); on a void, only when the terminal also sent a TM 103 receipt. */
   customerReceiptText?: string;
   customerReceiptLines?: ReceiptLine[];
   cardholderName?: string;

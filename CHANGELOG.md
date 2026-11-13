@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Ingenico Lane3600 fixes
+## v1.3.0 — Ingenico Lane3600 (USB) and Sunmi P2 (TCP) fixes
 
 Found on a live Lane3600 over USB. The terminal holds back every answer until about 30 s
 after the port opens, so the first request of a session always answered at 30.1 s.
@@ -60,6 +60,10 @@ after the port opens, so the first request of a session always answered at 30.1 
 - **fix (USB serial):** `disconnect()` no longer crashes the process when the port is
   already gone (cable unplugged, terminal rebooted). It used to make serialport emit an
   unhandled "Port is not open" error.
+
+- **docs:** README and type docs describe the void receipts as the live terminals send them:
+  no receipt with TM 103, one void receipt (merchant copy) with TM 104, on the Sunmi P2 and the
+  Lane3600 alike.
 
 ## v1.2.1 — card number masking
 
