@@ -174,11 +174,11 @@ exchanges on the same connection (spec §4.3–4.4):
 ```
   your app (ECR)                         terminal
        │  TM 003  cancellation (STAN, MT, new NS) ─▶│  looks the payment up
-       │◀─ TM 103  CR 000 = transaction found (merchant receipt)
+       │◀─ TM 103  CR 000 = transaction found (no receipt)
        │
        │  TM 004  cancellation confirmation ───────▶│  executes the reversal
        │          (same NS as TM 003, STAN, MT/DE and DATR/HETR echoed from TM 103)
-       │◀─ TM 104  CR 000 or 480 = void completed (customer receipt)
+       │◀─ TM 104  CR 000 or 480 = void completed (the void receipt, merchant copy)
 ```
 
 TM 103 CR 000 only means the payment was found. The reversal happens on TM 004, so the result
@@ -205,7 +205,7 @@ if (voided.isSuccess) {
   console.log(`Voided (CR ${voided.responseCode}), void STAN ${voided.stan}`);
 } else if (voided.isPending) {
   // Unknown outcome. Do not report the void as done, and do not blindly retry.
-  // The STAN and the TM 103 merchant receipt are kept on the result.
+  // The STAN is kept on the result.
   const check = await naps.duplicateReceipt(sale.stan!); // reprint the payment by STAN
   console.log(`Void unconfirmed (${voided.responseCode}); check receipt:`, check.receiptText);
 } else {
@@ -214,11 +214,11 @@ if (voided.isSuccess) {
 naps.disconnect();
 ```
 
-On a success, `voided.merchantReceiptLines` is the merchant copy (TM 103) and
-`voided.customerReceiptLines` the customer copy (TM 104; the terminal sends no receipt with CR 480).
-The Ingenico Lane3600 sends no receipt with TM 103: its only void receipt comes with TM 104, and the
-SDK returns it as the merchant copy (`merchantReceiptLines` and `receiptLines`), with no customer copy.
-A pending or refused void keeps the TM 103 merchant copy (none on the Lane3600).
+The live terminals (Sunmi P2 and Ingenico Lane3600) send no receipt with TM 103 and a single void
+receipt with TM 104, the merchant copy. On a success the SDK returns it as `merchantReceiptLines`
+(and `receiptLines`); there is no customer copy. A pending or refused void has no receipt.
+A terminal that does send a receipt with TM 103 gets it as `merchantReceiptLines`, and the TM 104
+receipt as `customerReceiptLines`.
 `originalSequence`, when given, is sent as NSA (005) on TM 003 only. A timeout on TM 003 itself
 returns `responseCode: "TIMEOUT"`.
 
@@ -317,11 +317,11 @@ sent: it parses every line, keeps them in order and adds, merges or drops nothin
 
 **Which copy comes from where**
 
-| Operation | Merchant copy ("Copie Commercant") | Customer copy ("Copie Client") |
+| Operation | Merchant copy ("Copie Commerçant") | Customer copy ("Copie Client") |
 |---|---|---|
 | `pay()` approved | `merchantReceiptLines` ← TM 101 | `customerReceiptLines` ← TM 102 |
-| `cancel()` completed | `merchantReceiptLines` ← TM 103 (Lane3600: ← TM 104) | `customerReceiptLines` ← TM 104 (none with CR 480; none on the Lane3600) |
-| `cancel()` pending or refused at TM 104 | `merchantReceiptLines` ← TM 103 | — |
+| `cancel()` completed | `merchantReceiptLines` ← TM 104 | — (live terminals send one void receipt; a terminal that sends a receipt with TM 103 gets it here as the merchant copy and TM 104's as the customer copy) |
+| `cancel()` pending or refused | — | — |
 
 Everything else returns the receipt as sent in `receiptLines`: declines (TM 101), `duplicateReceipt()`
 (TM 108), `totals()` (TM 110) and `referencing()` (TM 113). On payments and voids `receiptLines` is
@@ -370,8 +370,8 @@ DEBIT
 Copie Client
 ```
 
-The merchant copy ends with `Copie Commercant`; void copies end with `ANNULATION` and then the copy
-label. `parseReceipt(dp)` parses any DP block yourself.
+The merchant copy ends with `Copie Commerçant`; the void receipt ends with `ANNULATION` and
+`Copie Commerçant`. `parseReceipt(dp)` parses any DP block yourself.
 
 How the block is parsed: line groups are separated by `*`, each made of sub-tags 030–033, and `?`
 ends the block. Values are read by their TLV length, so a `*` or `?` inside a line's text (such as
