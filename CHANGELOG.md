@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **fix (results):** `responseMessage` is always the meaning of the response code (e.g.
+  `"Approved"`). It used to hold the raw receipt block (DP) whenever the reply carried one, as on
+  every approved payment from a live Sunmi P2. The receipt stays in `receiptText` /
+  `receiptLines`.
+
 ## v1.3.1 — lost confirmation is declined
 
 - **change (payment):** a payment approved at TM 101 whose confirmation reply (TM 102) never

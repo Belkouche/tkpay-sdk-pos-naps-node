@@ -88,6 +88,7 @@ describe("NapsClient.pay", () => {
     const res = await client(t).pay(12.5);
 
     expect(res.cardNumber).toBe("516794******3315");
+    expect(res.responseMessage).toBe("Approved"); // the meaning of the code, never the receipt
     expect(res.receiptText).not.toContain("5167941234563315");
     expect(res.receiptLines?.[0].text).toBe("CARTE 516794******3315");
     expect(parseMessage(t.sent[1])[TAG.NCAR]).toBe("516794******3315");
