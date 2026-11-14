@@ -18,7 +18,6 @@ import {
   buildCancellationConfirmation,
   buildConfirmation,
   buildMessage,
-  buildSettlement,
   describeResponse,
   extractLastMessage,
   isApproved,
@@ -292,19 +291,13 @@ export class NapsClient {
   }
 
   /**
-   * Settlement / telecollecte (TM 010): uploads the day's batch to the NAPS host.
-   * The terminal must be idle and referenced. CR 052 = already settled today.
+   * Sends nothing and returns `responseCode: "UNSUPPORTED"`. The ECR protocol has no
+   * telecollecte message: TM 010 is the totals ticket (spec v2.0 §4.7), and a live Sunmi P2
+   * answered it with the same totals before and after, so nothing was settled.
+   * @deprecated Run the telecollecte from the terminal menu; use {@link totals} for the ticket.
    */
   async settlement(): Promise<SettlementResult> {
-    const resp = await this.transport.sendReceive(buildSettlement(this.ncai), this.opts.paymentTimeoutMs);
-    const fields = parseMessage(resp);
-    const cr = fields[TAG.CR];
-    if (cr === "000") {
-      return { isSuccess: true, responseCode: cr, message: "Settlement accepted", date: fields[TAG.DA], time: fields[TAG.HE] };
-    }
-    const message =
-      cr === "052" ? "Already settled today" : cr === "909" ? "Terminal or server is down" : `Settlement failed: CR=${cr}`;
-    return { isSuccess: false, responseCode: cr, message };
+    return { isSuccess: false, responseCode: "UNSUPPORTED", message: "Telecollecte is not part of the NapsPay ECR protocol: run it from the terminal menu. Use totals() for the daily totals ticket." };
   }
 
   /** Auto-discover the serial port of an Ingenico Lane (default) or a Sunmi over USB. */

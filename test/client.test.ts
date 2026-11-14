@@ -361,19 +361,11 @@ describe("NapsClient totals / referencing receipt masking", () => {
 });
 
 describe("NapsClient.settlement", () => {
-  it("sends TM 010 without a sequence and maps CR=000 with date/time", async () => {
-    const t = new FakeTransport([common("110", "000")]);
+  it("sends nothing and returns UNSUPPORTED (no telecollecte in the ECR protocol)", async () => {
+    const t = new FakeTransport([]);
     const res = await client(t).settlement();
-    expect(res).toMatchObject({ isSuccess: true, responseCode: "000", date: "11092026", time: "133441" });
-    const req = parseMessage(t.sent[0]);
-    expect(req[TAG.TM]).toBe("010");
-    expect(req[TAG.NCAI]).toBe("0100001");
-    expect(req[TAG.NS]).toBeUndefined();
-  });
-
-  it("maps CR=052 to 'already settled today'", async () => {
-    const res = await client(new FakeTransport([common("110", "052")])).settlement();
-    expect(res.isSuccess).toBe(false);
-    expect(res.message).toBe("Already settled today");
+    expect(res).toEqual({ isSuccess: false, responseCode: "UNSUPPORTED", message: "Telecollecte is not part of the NapsPay ECR protocol: run it from the terminal menu. Use totals() for the daily totals ticket." });
+    expect(t.sent).toEqual([]);
+    expect(t.isConnected).toBe(false);
   });
 });

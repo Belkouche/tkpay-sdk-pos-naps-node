@@ -81,12 +81,6 @@ suite("NapsClient ⇄ emulator (TCP, v2)", () => {
     expect(res.entryMode).toBe("CC");
   });
 
-  it("settlement (TM 010) is accepted", async () => {
-    const res = await newClient().settlement();
-    expect(res.isSuccess).toBe(true);
-    expect(res.responseCode).toBe("000");
-  });
-
   it("duplicate receipt succeeds", async () => {
     const res = await newClient().duplicateReceipt();
     expect(res.isSuccess).toBe(true);
