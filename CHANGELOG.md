@@ -6,6 +6,10 @@
   carry no terminator, as over TCP (a `!` may crash the Sunmi's payment app), replies are read as
   UTF-8, and the network test is not sent. Verified on a live Sunmi P2: a 1 MAD payment and its
   void. The default, `"ingenico"`, is unchanged.
+- **feature (discovery):** without `serialPath`, `serialDevice: "sunmi"` auto-discovers the Sunmi
+  port (manufacturer "SUNMI", or vendor id 05c6); `NapsClient.findPort("sunmi")`,
+  `findSunmiPort()` / `pickSunmiPort()`. The Ingenico fallback ("first usbmodem / ttyACM") now
+  skips a Sunmi port, so it is not picked for a Lane.
 
 ## v1.3.1 — lost confirmation is declined
 

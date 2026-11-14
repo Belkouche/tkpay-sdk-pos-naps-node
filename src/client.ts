@@ -4,6 +4,7 @@ import {
   type PaymentResult,
   type ReferencingResult,
   type ResolvedOptions,
+  type SerialDevice,
   type SettlementResult,
   type TestResult,
   type TotalsResult,
@@ -27,7 +28,7 @@ import {
 import { TerminalTimeoutError, type Transport } from "./transport/transport.js";
 import { TcpTransport } from "./transport/tcp.js";
 import { createSerialTransport } from "./transport/serial.js";
-import { findIngenicoPort, listPorts, type PortInfo } from "./discovery.js";
+import { findIngenicoPort, findSunmiPort, listPorts, type PortInfo } from "./discovery.js";
 
 /**
  * Unified NAPS terminal client. Supports Sunmi P2/P3 (TCP) and Ingenico Lane
@@ -306,9 +307,9 @@ export class NapsClient {
     return { isSuccess: false, responseCode: cr, message };
   }
 
-  /** Auto-discover the Ingenico Lane serial port (USB serial only). */
-  static findPort(): Promise<string | null> {
-    return findIngenicoPort();
+  /** Auto-discover the serial port of an Ingenico Lane (default) or a Sunmi over USB. */
+  static findPort(device: SerialDevice = "ingenico"): Promise<string | null> {
+    return device === "sunmi" ? findSunmiPort() : findIngenicoPort();
   }
 
   /** List all available serial ports. */

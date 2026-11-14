@@ -303,8 +303,9 @@ naps.disconnect();
 ```ts
 import { NapsClient } from "@tkpay/naps";
 const ports = await NapsClient.listPorts(); // [{ path, vendorId, productId, manufacturer }]
-const ingenico = await NapsClient.findPort(); // path or null
-console.log(ports, ingenico);
+const ingenico = await NapsClient.findPort(); // Ingenico Lane: path or null
+const sunmi = await NapsClient.findPort("sunmi"); // Sunmi over USB: manufacturer "SUNMI" or vendor id 05c6
+console.log(ports, ingenico, sunmi);
 ```
 
 ---
@@ -474,15 +475,15 @@ after opening waits until the port has been open 32 s. A payment sent earlier wo
 approval too late to confirm. Connect once when the app starts and keep the client connected
 between transactions, so only the first request waits.
 
-**Sunmi over USB (serial).** Set `serialDevice: "sunmi"` and pass `serialPath` (the Sunmi shows up
-as a `usbmodem` / `ttyACM` / `COM` port). Requests are then framed as over TCP, without a terminator:
+**Sunmi over USB (serial).** Set `serialDevice: "sunmi"`. Omit `serialPath` to auto-discover the
+port (manufacturer "SUNMI", or USB vendor id `0x05C6`); the Ingenico discovery skips it. Requests are then framed as over TCP, without a terminator:
 a `!` may crash the Sunmi's payment app. The network test is not sent (`"UNSUPPORTED"`). The 32 s
 wait after opening the port and the 3 s between operations still apply: the live payment and void
 were run with them, and it isn't known yet whether the Sunmi needs them.
 
 ```ts
 import { NapsClient } from "@tkpay/naps";
-const sunmi = new NapsClient({ transport: "serial", serialDevice: "sunmi", serialPath: "/dev/tty.usbmodemPD0925" });
+const sunmi = new NapsClient({ transport: "serial", serialDevice: "sunmi" }); // port auto-discovered
 ```
 
 **Run a network test when the point-of-sale app starts (Ingenico over USB only).** It takes that wait while no customer

@@ -1,6 +1,6 @@
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedOptions } from "../models.js";
-import { findIngenicoPort } from "../discovery.js";
+import { findIngenicoPort, findSunmiPort } from "../discovery.js";
 import { byteLengthsToCharLengths, isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
@@ -67,7 +67,7 @@ export class SerialTransport implements Transport {
   private port: SerialPortLike | null = null;
   private lastRxAt = 0;
   private openedAt = 0;
-  /** Explicit path, or undefined to auto-discover the Ingenico port on connect. */
+  /** Explicit path, or undefined to auto-discover the terminal's port on connect. */
   private path: string | undefined;
   private readonly baudRate: number;
   /** Appended to each request; empty for a Sunmi, framed as over TCP. */
@@ -87,10 +87,10 @@ export class SerialTransport implements Transport {
 
   async connect(): Promise<void> {
     if (!this.path) {
-      const found = await findIngenicoPort();
+      const found = this.sunmi ? await findSunmiPort() : await findIngenicoPort();
       if (!found) {
         throw new Error(
-          "No Ingenico serial port found. Pass serialPath explicitly, or check the terminal is connected.",
+          `No ${this.sunmi ? "Sunmi" : "Ingenico"} serial port found. Pass serialPath explicitly, or check the terminal is connected.`,
         );
       }
       this.path = found;

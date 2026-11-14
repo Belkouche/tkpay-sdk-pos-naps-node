@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickIngenicoPort, INGENICO_VENDOR_ID } from "../src/discovery.js";
+import { pickIngenicoPort, pickSunmiPort, INGENICO_VENDOR_ID } from "../src/discovery.js";
 
 describe("pickIngenicoPort", () => {
   const ingenico = { path: "/dev/cu.usbmodem1401", vendorId: "0b00", productId: "0060" };
@@ -23,5 +23,27 @@ describe("pickIngenicoPort", () => {
   it("returns null when nothing plausible is present", () => {
     expect(pickIngenicoPort([other, ftdi])).toBeNull();
     expect(pickIngenicoPort([])).toBeNull();
+  });
+});
+
+describe("pickSunmiPort", () => {
+  // As serialport listed a live Sunmi P2 on macOS.
+  const sunmi = { path: "/dev/tty.usbmodemPD092513023394", manufacturer: "SUNMI", vendorId: "05c6", productId: "901f" };
+  const lane = { path: "/dev/cu.usbmodem1401", vendorId: "0b00", productId: "0060" };
+  const bareModem = { path: "/dev/cu.usbmodem9999" };
+
+  it("matches the Sunmi by manufacturer, or by vendor id (e.g. a Windows COM port)", () => {
+    expect(pickSunmiPort([lane, sunmi])).toBe(sunmi.path);
+    expect(pickSunmiPort([lane, { path: "COM5", vendorId: "05C6", productId: "901F" }])).toBe("COM5");
+  });
+
+  it("never falls back to another port", () => {
+    expect(pickSunmiPort([lane, bareModem])).toBeNull();
+  });
+
+  it("is skipped by the Ingenico fallback", () => {
+    expect(pickIngenicoPort([sunmi])).toBeNull();
+    expect(pickIngenicoPort([sunmi, bareModem])).toBe(bareModem.path);
+    expect(pickIngenicoPort([sunmi, lane])).toBe(lane.path);
   });
 });
