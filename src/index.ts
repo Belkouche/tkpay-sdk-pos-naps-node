@@ -3,6 +3,7 @@ export { resolveOptions } from "./models.js";
 export type {
   NapsClientOptions,
   TransportType,
+  SerialDevice,
   PaymentResult,
   TestResult,
   ReferencingResult,
@@ -34,5 +35,13 @@ export {
 } from "./protocol/tlv.js";
 export { TerminalTimeoutError } from "./transport/transport.js";
 export type { Transport } from "./transport/transport.js";
-export { listPorts, findIngenicoPort, pickIngenicoPort, INGENICO_VENDOR_ID } from "./discovery.js";
+export {
+  listPorts,
+  findIngenicoPort,
+  pickIngenicoPort,
+  findSunmiPort,
+  pickSunmiPort,
+  INGENICO_VENDOR_ID,
+  SUNMI_VENDOR_ID,
+} from "./discovery.js";
 export type { PortInfo } from "./discovery.js";

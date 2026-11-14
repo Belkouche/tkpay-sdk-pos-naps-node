@@ -4,6 +4,7 @@ import {
   type PaymentResult,
   type ReferencingResult,
   type ResolvedOptions,
+  type SerialDevice,
   type SettlementResult,
   type TestResult,
   type TotalsResult,
@@ -27,7 +28,7 @@ import {
 import { TerminalTimeoutError, type Transport } from "./transport/transport.js";
 import { TcpTransport } from "./transport/tcp.js";
 import { createSerialTransport } from "./transport/serial.js";
-import { findIngenicoPort, listPorts, type PortInfo } from "./discovery.js";
+import { findIngenicoPort, findSunmiPort, listPorts, type PortInfo } from "./discovery.js";
 
 /**
  * Unified NAPS terminal client. Supports Sunmi P2/P3 (TCP) and Ingenico Lane
@@ -245,16 +246,16 @@ export class NapsClient {
   }
 
   /**
-   * Network test (TM 009). USB serial only: over TCP nothing is sent and the result has
-   * `responseCode: "UNSUPPORTED"`. The NapsPay app on Sunmi terminals does not implement TM 009
+   * Network test (TM 009). Ingenico over USB only: over TCP or to a Sunmi over USB nothing is
+   * sent and the result has `responseCode: "UNSUPPORTED"`. The NapsPay app on Sunmi terminals does not implement TM 009
    * (it answers TM 101 with CR 902), and a test frame crashed the app on a Sunmi P2.
    */
   async networkTest(): Promise<TestResult> {
-    if (this.opts.transport !== "serial") {
+    if (this.opts.transport !== "serial" || this.opts.serialDevice === "sunmi") {
       return {
         isSuccess: false,
         responseCode: "UNSUPPORTED",
-        message: "Network test not supported over TCP (the terminal's payment app does not implement TM 009)",
+        message: "Network test not supported on a Sunmi (the terminal's payment app does not implement TM 009)",
       };
     }
     const resp = await this.transport.sendReceive(buildMessage(TM.NETWORK_TEST, this.managementFields()), this.opts.testTimeoutMs);
@@ -306,9 +307,9 @@ export class NapsClient {
     return { isSuccess: false, responseCode: cr, message };
   }
 
-  /** Auto-discover the Ingenico Lane serial port (USB serial only). */
-  static findPort(): Promise<string | null> {
-    return findIngenicoPort();
+  /** Auto-discover the serial port of an Ingenico Lane (default) or a Sunmi over USB. */
+  static findPort(device: SerialDevice = "ingenico"): Promise<string | null> {
+    return device === "sunmi" ? findSunmiPort() : findIngenicoPort();
   }
 
   /** List all available serial ports. */

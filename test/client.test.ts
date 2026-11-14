@@ -277,6 +277,13 @@ describe("NapsClient.networkTest / referencing", () => {
     expect(res.isSuccess).toBe(true);
   });
 
+  it("network test to a Sunmi over USB sends nothing and returns UNSUPPORTED", async () => {
+    const t = new FakeTransport([common("109", "000")]);
+    const res = await new NapsClient({ transport: "serial", serialPath: "/dev/x", serialDevice: "sunmi" }, t).networkTest();
+    expect(res.responseCode).toBe("UNSUPPORTED");
+    expect(t.sent).toHaveLength(0);
+  });
+
   it("network test over TCP sends nothing and returns UNSUPPORTED (Sunmi NapsPay answers 902)", async () => {
     const t = new FakeTransport([common("109", "000")]);
     const res = await client(t).networkTest();

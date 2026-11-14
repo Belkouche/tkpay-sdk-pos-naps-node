@@ -1,11 +1,13 @@
+import { StringDecoder } from "node:string_decoder";
 import type { ResolvedOptions } from "../models.js";
-import { findIngenicoPort } from "../discovery.js";
+import { findIngenicoPort, findSunmiPort } from "../discovery.js";
 import { byteLengthsToCharLengths, isCompleteMessage, MAX_RESPONSE_CHARS } from "../protocol/tlv.js";
 import { TerminalTimeoutError, type Transport } from "./transport.js";
 
 /**
- * USB serial transport for Ingenico Lane terminals. Uses the optional `serialport`
- * package (native), lazy-loaded so the SDK installs and the TCP path works without it.
+ * USB serial transport for Ingenico Lane terminals, and for a Sunmi P2 over USB
+ * (`serialDevice: "sunmi"`). Uses the optional `serialport` package (native), lazy-loaded so
+ * the SDK installs and the TCP path works without it.
  *
  * NAPS TLV generation is selectable via `protocolVersion` ("v1" | "v2"): v1 terminals
  * terminate responses with '?', v2 (NapsPay v5.4.4+) with '!'.
@@ -65,15 +67,18 @@ export class SerialTransport implements Transport {
   private port: SerialPortLike | null = null;
   private lastRxAt = 0;
   private openedAt = 0;
-  /** Explicit path, or undefined to auto-discover the Ingenico port on connect. */
+  /** Explicit path, or undefined to auto-discover the terminal's port on connect. */
   private path: string | undefined;
   private readonly baudRate: number;
+  /** Appended to each request; empty for a Sunmi, framed as over TCP. */
   private readonly terminator: string;
+  private readonly sunmi: boolean;
 
   constructor(opts: ResolvedOptions) {
     this.path = opts.serialPath; // may be undefined → discovered on connect
     this.baudRate = opts.serialBaudRate;
-    this.terminator = opts.protocolVersion === "v1" ? "?" : "!";
+    this.sunmi = opts.serialDevice === "sunmi";
+    this.terminator = this.sunmi ? "" : opts.protocolVersion === "v1" ? "?" : "!";
   }
 
   get isConnected(): boolean {
@@ -82,10 +87,10 @@ export class SerialTransport implements Transport {
 
   async connect(): Promise<void> {
     if (!this.path) {
-      const found = await findIngenicoPort();
+      const found = this.sunmi ? await findSunmiPort() : await findIngenicoPort();
       if (!found) {
         throw new Error(
-          "No Ingenico serial port found. Pass serialPath explicitly, or check the terminal is connected.",
+          `No ${this.sunmi ? "Sunmi" : "Ingenico"} serial port found. Pass serialPath explicitly, or check the terminal is connected.`,
         );
       }
       this.path = found;
@@ -121,13 +126,16 @@ export class SerialTransport implements Transport {
 
     return new Promise<string>((resolve, reject) => {
       let buf = "";
+      // Sunmi: UTF-8 text with lengths in characters, as over TCP (the decoder keeps a character
+      // split across chunks whole).
+      const utf8 = this.sunmi ? new StringDecoder("utf8") : null;
       let drainTimer: NodeJS.Timeout | null = null;
       const overall = setTimeout(() => finish(new TerminalTimeoutError(timeoutMs)), timeoutMs);
 
       const onData = (chunk: Buffer) => {
         this.lastRxAt = Date.now();
-        // One character per byte: the Lane3600's lengths count bytes (see byteLengthsToCharLengths).
-        buf += chunk.toString("latin1");
+        // Lane3600: one character per byte, its lengths count bytes (see byteLengthsToCharLengths).
+        buf += utf8 ? utf8.write(chunk) : chunk.toString("latin1");
         // The frame ends at a '!'/'?' terminator on a field boundary. One inside a value (receipt
         // lines end with '?') must not cut the reply short: the rest would be lost, or read as
         // the next reply.
@@ -155,12 +163,12 @@ export class SerialTransport implements Transport {
           // next request: close the port so the next call opens a fresh one.
           this.disconnect();
           reject(err);
-        } else resolve(byteLengthsToCharLengths(value!));
+        } else resolve(utf8 ? value! : byteLengthsToCharLengths(value!));
       };
 
       port.on("data", onData);
       port.on("error", onErr);
-      // Frames end with the terminator, as in the diagnostic session that worked on the Lane3600.
+      // Lane3600 frames end with the terminator, as in the diagnostic session that worked on it.
       const frame = message.endsWith(this.terminator) ? message : message + this.terminator;
       port.write(frame, "utf8", (err) => {
         if (err) finish(err);

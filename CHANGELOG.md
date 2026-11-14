@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **feature (USB serial):** `serialDevice: "sunmi"` drives a Sunmi P2 connected over USB. Requests
+  carry no terminator, as over TCP (a `!` may crash the Sunmi's payment app), replies are read as
+  UTF-8, and the network test is not sent. Verified on a live Sunmi P2: a 1 MAD payment and its
+  void. The default, `"ingenico"`, is unchanged.
+- **feature (discovery):** without `serialPath`, `serialDevice: "sunmi"` auto-discovers the Sunmi
+  port (manufacturer "SUNMI", or vendor id 05c6); `NapsClient.findPort("sunmi")`,
+  `findSunmiPort()` / `pickSunmiPort()`. The Ingenico fallback ("first usbmodem / ttyACM") now
+  skips a Sunmi port, so it is not picked for a Lane.
 - **fix (results):** `responseMessage` is always the meaning of the response code (e.g.
   `"Approved"`). It used to hold the raw receipt block (DP) whenever the reply carried one, as on
   every approved payment from a live Sunmi P2. The receipt stays in `receiptText` /
