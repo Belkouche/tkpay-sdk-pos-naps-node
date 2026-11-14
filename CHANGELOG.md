@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.0 — Sunmi P2 over USB
 
 - **feature (USB serial):** `serialDevice: "sunmi"` drives a Sunmi P2 connected over USB. Requests
   carry no terminator, as over TCP (a `!` may crash the Sunmi's payment app), replies are read as
