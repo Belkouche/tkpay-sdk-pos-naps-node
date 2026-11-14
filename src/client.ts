@@ -336,7 +336,7 @@ function mapResult(fields: Record<string, string>, isApprovedFlag: boolean): Pay
     isSuccess: isApprovedFlag && isApproved(cr),
     isCancelled: cr === "280" || cr === "480",
     responseCode: cr,
-    responseMessage: dp ?? describeResponse(cr),
+    responseMessage: describeResponse(cr),
     authorizationNumber: fields[TAG.NA],
     cardNumber: card ? maskPan(card) : undefined,
     // CardScheme has no dedicated v2 tag — leave undefined rather than mislabel DATR.

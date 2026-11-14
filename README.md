@@ -147,7 +147,7 @@ const r = await naps.pay(125);
 
 r.isSuccess;            // approved and confirmed
 r.responseCode;         // CR (013): "000" = approved
-r.responseMessage;      // receipt text, or the meaning of the code
+r.responseMessage;      // the meaning of the code, e.g. "Approved" (the receipt is in receiptLines)
 r.stan;                 // STAN (008) — keep it: needed to void or reprint
 r.sequence;             // NS (004) of the payment
 r.cardNumber;           // masked PAN, e.g. "516794******3315"

@@ -10,6 +10,10 @@
   port (manufacturer "SUNMI", or vendor id 05c6); `NapsClient.findPort("sunmi")`,
   `findSunmiPort()` / `pickSunmiPort()`. The Ingenico fallback ("first usbmodem / ttyACM") now
   skips a Sunmi port, so it is not picked for a Lane.
+- **fix (results):** `responseMessage` is always the meaning of the response code (e.g.
+  `"Approved"`). It used to hold the raw receipt block (DP) whenever the reply carried one, as on
+  every approved payment from a live Sunmi P2. The receipt stays in `receiptText` /
+  `receiptLines`.
 
 ## v1.3.1 — lost confirmation is declined
 
