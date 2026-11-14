@@ -3,6 +3,7 @@ export { resolveOptions } from "./models.js";
 export type {
   NapsClientOptions,
   TransportType,
+  SerialDevice,
   PaymentResult,
   TestResult,
   ReferencingResult,

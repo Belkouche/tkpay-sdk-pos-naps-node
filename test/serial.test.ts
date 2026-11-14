@@ -69,6 +69,22 @@ describe("serial transport write", () => {
     await vi.advanceTimersByTimeAsync(100);
     await sent;
   });
+
+  it("Sunmi over USB: no terminator, UTF-8 reply with lengths in characters", async () => {
+    vi.useFakeTimers();
+    const t = createSerialTransport(resolveOptions({ transport: "serial", serialPath: "/dev/x", serialDevice: "sunmi" }));
+    await t.connect();
+    const port = ports.at(-1)!;
+    const reply = t.sendReceive("001003001", 5_000);
+    await vi.advanceTimersByTimeAsync(32_000);
+    expect(port.writes).toEqual(["001003001"]);
+    // "ç" is two bytes; split it across two chunks.
+    const bytes = Buffer.from("001003101033010Commerçant!", "utf8");
+    const cut = bytes.indexOf(0xc3) + 1;
+    for (const l of [...port.dataListeners]) l(bytes.subarray(0, cut));
+    for (const l of [...port.dataListeners]) l(bytes.subarray(cut));
+    await expect(reply).resolves.toBe("001003101033010Commerçant!");
+  });
 });
 
 describe("serial transport quiet time", () => {

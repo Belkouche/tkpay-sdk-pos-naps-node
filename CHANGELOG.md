@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **feature (USB serial):** `serialDevice: "sunmi"` drives a Sunmi P2 connected over USB. Requests
+  carry no terminator, as over TCP (a `!` may crash the Sunmi's payment app), replies are read as
+  UTF-8, and the network test is not sent. Verified on a live Sunmi P2: a 1 MAD payment and its
+  void. The default, `"ingenico"`, is unchanged.
+
 ## v1.3.1 — lost confirmation is declined
 
 - **change (payment):** a payment approved at TM 101 whose confirmation reply (TM 102) never

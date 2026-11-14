@@ -4,6 +4,9 @@ import type { ProtocolVersion } from "./protocol/tlv.js";
 /** Terminal transport type. */
 export type TransportType = "tcp" | "serial";
 
+/** Terminal on the USB serial transport. */
+export type SerialDevice = "ingenico" | "sunmi";
+
 export interface NapsClientOptions {
   /** Transport: "tcp" (Sunmi P2/P3) or "serial" (Ingenico Lane). Default "tcp". */
   transport?: TransportType;
@@ -17,6 +20,13 @@ export interface NapsClientOptions {
   /** Serial port path (e.g. /dev/tty.usbmodem1201, COM3). */
   serialPath?: string;
   serialBaudRate?: number; // default 115200
+  /**
+   * Terminal behind the serial port. "ingenico" (default): Lane3600, requests end with the
+   * protocol terminator and lengths count UTF-8 bytes. "sunmi": a Sunmi P2 over USB, framed as
+   * over TCP: no terminator on requests (a '!' may crash its payment app), text read as UTF-8,
+   * and no network test (TM 009).
+   */
+  serialDevice?: SerialDevice;
   /**
    * NAPS TLV protocol generation for the serial terminal. v1 terminals terminate
    * responses with '?' and ignore the §4.2 confirmation extras; v2 (NapsPay v5.4.4+)
@@ -46,6 +56,7 @@ export const DEFAULTS: ResolvedOptions = {
   tcpPort: 4444,
   tcpConnectTimeoutMs: 120_000,
   serialBaudRate: 115200,
+  serialDevice: "ingenico",
   protocolVersion: "v2",
   registerId: "01",
   cashierId: "00001",

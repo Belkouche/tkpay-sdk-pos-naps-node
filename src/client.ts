@@ -245,16 +245,16 @@ export class NapsClient {
   }
 
   /**
-   * Network test (TM 009). USB serial only: over TCP nothing is sent and the result has
-   * `responseCode: "UNSUPPORTED"`. The NapsPay app on Sunmi terminals does not implement TM 009
+   * Network test (TM 009). Ingenico over USB only: over TCP or to a Sunmi over USB nothing is
+   * sent and the result has `responseCode: "UNSUPPORTED"`. The NapsPay app on Sunmi terminals does not implement TM 009
    * (it answers TM 101 with CR 902), and a test frame crashed the app on a Sunmi P2.
    */
   async networkTest(): Promise<TestResult> {
-    if (this.opts.transport !== "serial") {
+    if (this.opts.transport !== "serial" || this.opts.serialDevice === "sunmi") {
       return {
         isSuccess: false,
         responseCode: "UNSUPPORTED",
-        message: "Network test not supported over TCP (the terminal's payment app does not implement TM 009)",
+        message: "Network test not supported on a Sunmi (the terminal's payment app does not implement TM 009)",
       };
     }
     const resp = await this.transport.sendReceive(buildMessage(TM.NETWORK_TEST, this.managementFields()), this.opts.testTimeoutMs);

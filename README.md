@@ -11,7 +11,7 @@ Specification v2.0 (NapsPay v5.4.4).
 | Terminal (spec §2) | Connection | In this SDK |
 |---|---|---|
 | Sunmi P2, P3, P2 Smart PAD | Wi-Fi, TCP port 4444 | `transport: "tcp"` |
-| Sunmi P2, P3, P2 Smart PAD | USB | Not supported — use Wi-Fi |
+| Sunmi P2, P3, P2 Smart PAD | USB | `transport: "serial"`, `serialDevice: "sunmi"` (verified on a Sunmi P2) |
 | Ingenico Lane 3600 | USB only | `transport: "serial"`, port auto-discovered |
 | Ingenico Self 5000 | USB only | Same USB serial path as the Lane; not tested separately |
 
@@ -230,8 +230,8 @@ returns `responseCode: "TIMEOUT"`.
 Each opens (or reuses) the connection, sends one frame with your NCAI (and a fresh sequence number,
 except settlement) and reads one response.
 
-**Network test** (TM 009) — checks the terminal ↔ host link. USB serial only: over TCP nothing
-is sent and `responseCode` is `"UNSUPPORTED"`, because the NapsPay app on Sunmi terminals does not
+**Network test** (TM 009) — checks the terminal ↔ host link. Ingenico over USB only: over TCP, or
+to a Sunmi over USB, nothing is sent and `responseCode` is `"UNSUPPORTED"`, because the NapsPay app on Sunmi terminals does not
 implement TM 009 (it answers 902) and a test frame crashed the app on a Sunmi P2.
 
 ```ts
@@ -474,7 +474,18 @@ after opening waits until the port has been open 32 s. A payment sent earlier wo
 approval too late to confirm. Connect once when the app starts and keep the client connected
 between transactions, so only the first request waits.
 
-**Run a network test when the point-of-sale app starts (USB only).** It takes that wait while no customer
+**Sunmi over USB (serial).** Set `serialDevice: "sunmi"` and pass `serialPath` (the Sunmi shows up
+as a `usbmodem` / `ttyACM` / `COM` port). Requests are then framed as over TCP, without a terminator:
+a `!` may crash the Sunmi's payment app. The network test is not sent (`"UNSUPPORTED"`). The 32 s
+wait after opening the port and the 3 s between operations still apply: the live payment and void
+were run with them, and it isn't known yet whether the Sunmi needs them.
+
+```ts
+import { NapsClient } from "@tkpay/naps";
+const sunmi = new NapsClient({ transport: "serial", serialDevice: "sunmi", serialPath: "/dev/tty.usbmodemPD0925" });
+```
+
+**Run a network test when the point-of-sale app starts (Ingenico over USB only).** It takes that wait while no customer
 is waiting, checks the terminal and the bank host, and leaves the port open, so the first sale goes
 straight to the card prompt:
 
@@ -498,6 +509,7 @@ const naps = new NapsClient({
   tcpConnectTimeoutMs: 120_000,
   serialPath: undefined,               // serial: omit to auto-discover
   serialBaudRate: 115_200,
+  serialDevice: "ingenico",            // serial: "ingenico" (Lane3600) | "sunmi" (no terminator)
   protocolVersion: "v2",               // default per transport
   registerId: "01",                    // 2 digits  } sent as NCAI (003)
   cashierId: "00001",                  // 5 digits  }
