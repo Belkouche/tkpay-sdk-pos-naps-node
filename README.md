@@ -227,8 +227,8 @@ returns `responseCode: "TIMEOUT"`.
 
 ## 5. Other operations
 
-Each opens (or reuses) the connection, sends one frame with your NCAI (and a fresh sequence number,
-except settlement) and reads one response.
+Each opens (or reuses) the connection, sends one frame with your NCAI and a fresh sequence number,
+and reads one response.
 
 **Network test** (TM 009) — checks the terminal ↔ host link. Ingenico over USB only: over TCP, or
 to a Sunmi over USB, nothing is sent and `responseCode` is `"UNSUPPORTED"`, because the NapsPay app on Sunmi terminals does not
@@ -268,16 +268,10 @@ console.log(receiptToText(totals.receiptLines ?? []));
 naps.disconnect();
 ```
 
-**Settlement** (TM 010, telecollecte) — uploads the day's batch to the host. The terminal must be
-idle and referenced:
-
-```ts
-import { NapsClient } from "@tkpay/naps";
-const naps = new NapsClient({ tcpHost: "127.0.0.1" });
-const s = await naps.settlement(); // { isSuccess, responseCode, message, date, time }
-console.log(s.isSuccess ? `Settled ${s.date} ${s.time}` : s.message); // CR 052 = already settled today
-naps.disconnect();
-```
+**Telecollecte** — not part of the ECR protocol: run it from the terminal menu. The spec (v2.0
+§4.7) defines TM 010 as the totals ticket, and a live Sunmi P2 answered TM 010 with the same totals
+before and after, so nothing was settled. `settlement()` is deprecated: it sends nothing and
+returns `responseCode: "UNSUPPORTED"`. Use `totals()` for the ticket.
 
 **Referencing** (TM 013) — loads a parameter set: `"01"` merchant (default), `"02"` recharge:
 
@@ -417,7 +411,6 @@ There are three kinds of outcome:
    | `cancel()` TM 004 | `confirmationTimeoutMs` (40 s) | returns `isPending: true`, `responseCode: "TIMEOUT"` |
    | `networkTest()`, `totals()` | `testTimeoutMs` (90 s) | **throws** `TerminalTimeoutError` |
    | `referencing()` | `referencingTimeoutMs` (60 s) | **throws** `TerminalTimeoutError` |
-   | `settlement()` | `paymentTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
    | `duplicateReceipt()`, `resetPinPad()` | `testTimeoutMs` (90 s) | **throws** `TerminalTimeoutError` |
    | connecting | `tcpConnectTimeoutMs` (120 s) | **throws** `TerminalTimeoutError` |
 
@@ -574,12 +567,11 @@ NAPS_EMULATOR=/path/to/naps_emulator.py NAPS_EMULATOR_PORT=4453 npm test
 |---|---|
 | `ECONNREFUSED` thrown | Wrong IP or port, terminal not on the same network, or NapsPay not running / not on its waiting screen. Check the terminal IP and port 4444. |
 | `pay()` returns `"TIMEOUT"` | Nobody presented a card within `paymentTimeoutMs`, or the terminal is busy. Check the terminal screen before retrying. |
-| `TerminalTimeoutError` thrown | A management operation (network test, totals, referencing, settlement, duplicate, reset) got no reply. |
+| `TerminalTimeoutError` thrown | A management operation (network test, totals, referencing, duplicate, reset) got no reply. |
 | Every response takes ~1 s longer | The terminal ends responses with the other terminator; set `protocolVersion` to match. Expected on voids (TM 103/104 carry no terminator). |
 | CR `909` | System failure on the terminal or host. A live terminal also returned it for a void without the amount — always pass it to `cancel()`. |
 | CR `302` | Record not found: wrong STAN, or the payment is not from the current day. |
 | CR `482` | Transaction already cancelled. On TM 102 the terminal reversed the sale itself. |
-| CR `052` on `settlement()` | Already settled today. |
 | `cancel()` returns `isPending: true` | TM 104 was CR 995 or never arrived. The void may have gone through: reprint the payment with `duplicateReceipt(stan)` and reconcile before doing anything else. |
 | `serialport` error | Install it: `npm install serialport` (only for USB). |
 | `No Ingenico serial port found` | Cable not connected, or the port is not detected; pass `serialPath` explicitly (`NapsClient.listPorts()` lists candidates). |

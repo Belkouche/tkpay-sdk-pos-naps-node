@@ -55,7 +55,8 @@ export const TM = {
   DUPLICATE: "008",
   NETWORK_TEST: "009",
   TOTALS: "010",
-  SETTLEMENT: "010", // telecollecte — shares TM 010 with totals
+  /** @deprecated TM 010 is the totals request; the protocol has no telecollecte message. */
+  SETTLEMENT: "010",
   RESET_PINPAD: "012",
   REFERENCING: "013",
   // Terminal → ECR responses (request TM + 100).
@@ -318,8 +319,8 @@ export function buildCancellationConfirmation(stan: string, opts: BuildCancellat
 }
 
 /**
- * Settlement / telecollecte (TM 010): TM + NCAI + DA + HE, no sequence number
- * (same frame as the canonical C# SDK).
+ * TM 010 + NCAI + DA + HE, no sequence number.
+ * @deprecated TM 010 asks for the totals ticket, it does not settle (spec v2.0 §4.7).
  */
 export function buildSettlement(ncai = "0100001"): string {
   const t = now();

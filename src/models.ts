@@ -131,14 +131,12 @@ export interface ReferencingResult {
   receiptLines?: ReceiptLine[];
 }
 
+/** @deprecated Result of the deprecated {@link NapsClient.settlement}: always `"UNSUPPORTED"`. */
 export interface SettlementResult {
   isSuccess: boolean;
   responseCode?: string;
-  /** Human-readable status ("052" = already settled today). */
   message?: string;
-  /** DA (014) — settlement date (DDMMYYYY). */
   date?: string;
-  /** HE (015) — settlement time (HHMMSS). */
   time?: string;
 }
 

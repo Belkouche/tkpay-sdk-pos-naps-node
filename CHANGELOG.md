@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.4.1 — settlement() no longer claims a telecollecte
+
+- **change (settlement):** `settlement()` sends nothing and returns `isSuccess: false`,
+  `responseCode: "UNSUPPORTED"`. The ECR protocol has no telecollecte message: the spec (v2.0
+  §4.7) defines TM 010 as the totals ticket. On a live Sunmi P2 over USB, TM 010 sent with and
+  without a sequence number returned CR 000 and the same "TOTAL" ticket, with the totals unchanged,
+  so nothing was settled; `settlement()` used to report it as "Settlement accepted". Run the
+  telecollecte from the terminal menu and use `totals()` for the ticket. `settlement()`,
+  `SettlementResult`, `buildSettlement` and `TM.SETTLEMENT` are deprecated. Not checked on an
+  Ingenico Lane3600.
+
 ## v1.4.0 — Sunmi P2 over USB
 
 - **feature (USB serial):** `serialDevice: "sunmi"` drives a Sunmi P2 connected over USB. Requests
